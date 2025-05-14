@@ -11,8 +11,8 @@ const Header: React.FC = () => {
         <div className="flex items-center space-x-2">
           <Coins className="text-primary h-8 w-8" />
           <div>
-            <h1 className="text-2xl font-bold text-white">CryptoSentry</h1>
-            <p className="text-xs text-neutral-400">Automated Trading System</p>
+            <h1 className="text-2xl font-bold text-white">Cryptobot Nightstalker</h1>
+            <p className="text-xs text-neutral-400">Automated Trading Guru</p>
           </div>
         </div>
         
