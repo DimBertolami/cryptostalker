@@ -1,10 +1,52 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, BarChart3, DollarSign, Wallet } from 'lucide-react';
+import { Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  ChartOptions
+} from 'chart.js';
 import useCryptoStore from '../store/useCryptoStore';
 import clsx from 'clsx';
 
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+);
+
 const Portfolio: React.FC = () => {
-  const { portfolio, sellManual } = useCryptoStore();
+  const { portfolio, sellManual, updateInterval } = useCryptoStore();
+  const [priceHistory, setPriceHistory] = useState<Map<string, { prices: number[], timestamps: string[] }>>(new Map());
+  
+  // Update price history when portfolio changes
+  useEffect(() => {
+    portfolio.forEach(position => {
+      setPriceHistory(prev => {
+        const history = prev.get(position.id) || { prices: [], timestamps: [] };
+        const now = new Date().toLocaleTimeString();
+        
+        // Keep last 50 data points
+        const prices = [...history.prices.slice(-49), position.currentPrice];
+        const timestamps = [...history.timestamps.slice(-49), now];
+        
+        const newHistory = new Map(prev);
+        newHistory.set(position.id, { prices, timestamps });
+        return newHistory;
+      });
+    });
+  }, [portfolio]);
   
   // Calculate total portfolio value
   const totalValue = portfolio.reduce((total, position) => {
@@ -16,9 +58,59 @@ const Portfolio: React.FC = () => {
     return total + position.profitLoss;
   }, 0);
   
+  // Chart options
+  const chartOptions: ChartOptions<'line'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: {
+      duration: 0
+    },
+    scales: {
+      y: {
+        grid: {
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+        ticks: {
+          color: '#94a3b8'
+        }
+      },
+      x: {
+        grid: {
+          display: false
+        },
+        ticks: {
+          color: '#94a3b8',
+          maxRotation: 0,
+          autoSkip: true,
+          maxTicksLimit: 5
+        }
+      }
+    },
+    plugins: {
+      legend: {
+        position: 'top' as const,
+        labels: {
+          color: '#94a3b8',
+          usePointStyle: true,
+          pointStyle: 'circle'
+        }
+      },
+      tooltip: {
+        mode: 'index',
+        intersect: false,
+        backgroundColor: '#1e293b',
+        borderColor: '#334155',
+        borderWidth: 1,
+        titleColor: '#fff',
+        bodyColor: '#94a3b8',
+        padding: 12,
+        displayColors: true
+      }
+    }
+  };
+  
   // Handle sell action for a position
   const handleSell = (position: any) => {
-    // Find the full crypto object from the store
     const cryptoToSell = {
       id: position.id,
       name: position.name,
@@ -96,6 +188,53 @@ const Portfolio: React.FC = () => {
         </div>
       )}
       
+      {/* Price Charts */}
+      {portfolio.length > 0 && (
+        <div className="mb-6 grid grid-cols-1 gap-4">
+          {portfolio.map(position => {
+            const history = priceHistory.get(position.id);
+            if (!history) return null;
+            
+            const chartData = {
+              labels: history.timestamps,
+              datasets: [
+                {
+                  label: `${position.name} (${position.symbol.toUpperCase()})`,
+                  data: history.prices,
+                  borderColor: '#3b82f6',
+                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  borderWidth: 2,
+                  pointRadius: 0,
+                  pointHoverRadius: 4,
+                  fill: true,
+                  tension: 0.4
+                }
+              ]
+            };
+            
+            return (
+              <div key={position.id} className="bg-background rounded-lg p-4 border border-neutral-700">
+                <div className="flex justify-between items-center mb-4">
+                  <div>
+                    <h3 className="font-medium text-white">{position.name}</h3>
+                    <p className="text-sm text-neutral-400">Updated every {updateInterval}s</p>
+                  </div>
+                  <p className="text-lg font-medium text-white">
+                    ${position.currentPrice.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 6
+                    })}
+                  </p>
+                </div>
+                <div className="h-[200px]">
+                  <Line options={chartOptions} data={chartData} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      
       {portfolio.length === 0 ? (
         <div className="bg-background rounded-lg p-8 text-center border border-neutral-700">
           <Wallet className="h-12 w-12 text-neutral-500 mx-auto mb-3" />
@@ -159,7 +298,7 @@ const Portfolio: React.FC = () => {
                           <TrendingDown className="h-3 w-3 mr-1" />
                         )}
                         <span className="font-mono">
-                          {position.profitLoss >= 0 ? '+' : ''}${Math.abs(position.profitLoss).toLocaleString(undefined, {
+                          {position.profitLoss >= 0 ? '+' : ''}{Math.abs(position.profitLoss).toLocaleString(undefined, {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2
                           })}
