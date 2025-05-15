@@ -4,6 +4,7 @@ import NewCryptosTable from './NewCryptosTable';
 import TradeHistory from './TradeHistory';
 import Portfolio from './Portfolio';
 import ExchangeSettings from './ExchangeSettings';
+import JupiterWidget from './JupiterWidget';
 import useCryptoStore from '../store/useCryptoStore';
 
 const Dashboard: React.FC = () => {
@@ -31,6 +32,7 @@ const Dashboard: React.FC = () => {
           <TabList.Tab>New Cryptocurrencies</TabList.Tab>
           <TabList.Tab>Portfolio</TabList.Tab>
           <TabList.Tab>Trade History</TabList.Tab>
+          <TabList.Tab>Jupiter Swap</TabList.Tab>
           <TabList.Tab>Exchange Settings</TabList.Tab>
         </TabList>
         
@@ -47,6 +49,10 @@ const Dashboard: React.FC = () => {
         </TabPanel>
         
         <TabPanel index={3}>
+          <JupiterWidget />
+        </TabPanel>
+        
+        <TabPanel index={4}>
           <ExchangeSettings />
         </TabPanel>
       </Tabs>
