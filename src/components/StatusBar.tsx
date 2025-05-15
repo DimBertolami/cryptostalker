@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PlayCircle, PauseCircle, Clock, RefreshCw, Wallet } from 'lucide-react';
+import { PlayCircle, PauseCircle, Clock, RefreshCw, Wallet, Pause, Play } from 'lucide-react';
 import useCryptoStore from '../store/useCryptoStore';
 import useExchangeStore from '../store/useExchangeStore';
 import clsx from 'clsx';
@@ -11,7 +11,9 @@ const StatusBar: React.FC = () => {
     updateInterval, 
     setUpdateInterval,
     isLiveTrading,
-    toggleLiveTrading
+    toggleLiveTrading,
+    isPaused,
+    togglePause
   } = useCryptoStore();
   
   const { exchanges } = useExchangeStore();
@@ -39,7 +41,7 @@ const StatusBar: React.FC = () => {
             {isAutoTrading ? "Stop Auto-Trading" : "Start Auto-Trading"}
           </button>
           
-          <div className="relative">
+          <div className="relative flex items-center space-x-2">
             <button
               onClick={() => setShowIntervalDropdown(!showIntervalDropdown)}
               className="flex items-center px-3 py-2 bg-neutral-700 hover:bg-neutral-600 rounded-md text-white transition-colors"
@@ -47,6 +49,22 @@ const StatusBar: React.FC = () => {
               <Clock className="mr-2 h-4 w-4" />
               {updateInterval}s
               <RefreshCw className="ml-1 h-3 w-3" />
+            </button>
+            
+            <button
+              onClick={togglePause}
+              className={clsx(
+                "flex items-center px-2 py-2 rounded-md transition-colors",
+                isPaused
+                  ? "bg-primary text-white hover:bg-primary-dark"
+                  : "bg-neutral-700 text-white hover:bg-neutral-600"
+              )}
+            >
+              {isPaused ? (
+                <Play className="h-4 w-4" />
+              ) : (
+                <Pause className="h-4 w-4" />
+              )}
             </button>
             
             {showIntervalDropdown && (

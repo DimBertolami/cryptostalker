@@ -15,8 +15,12 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
   trades: [],
   portfolio: [],
   isLiveTrading: false,
+  isPaused: false,
 
   fetchCryptos: async () => {
+    const { isPaused } = get();
+    if (isPaused) return;
+
     try {
       set({ loading: true, error: null });
       const data = await fetchNewCryptocurrencies();
@@ -114,6 +118,16 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
       toast.success("Auto-trading activated! Monitoring for high-value opportunities.");
     } else {
       toast.success("Auto-trading deactivated. Manual trading still available.");
+    }
+  },
+
+  togglePause: () => {
+    set((state) => ({ isPaused: !state.isPaused }));
+    const { isPaused } = get();
+    if (isPaused) {
+      toast.success("Auto-fetching paused");
+    } else {
+      toast.success("Auto-fetching resumed");
     }
   },
 

@@ -58,11 +58,13 @@ export interface CryptoState {
   trades: Trade[];
   portfolio: TradeableCrypto[];
   isLiveTrading: boolean;
+  isPaused: boolean;
   fetchCryptos: () => Promise<void>;
   toggleAutoTrading: () => void;
   setMonitoredCrypto: (crypto: Cryptocurrency | null) => void;
   setUpdateInterval: (interval: number) => void;
   toggleLiveTrading: () => void;
+  togglePause: () => void;
   buyManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => void;
   sellManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => void;
 }
