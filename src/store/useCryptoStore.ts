@@ -9,7 +9,7 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
   highValueCryptos: [],
   loading: false,
   error: null,
-  updateInterval: 2, // in seconds
+  updateInterval: 2,
   isAutoTrading: false,
   monitoredCrypto: null,
   trades: [],
