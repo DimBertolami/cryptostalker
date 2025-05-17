@@ -8,7 +8,8 @@ const JUPITER_TOKENS_URL = 'https://quote-api.jup.ag/v6/tokens';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept',
+  'Content-Type': 'application/json',
 };
 
 async function getNewCmcTokens() {
@@ -70,6 +71,7 @@ async function getJupiterTokens() {
 }
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -84,23 +86,16 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify(allTokens),
-      {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      },
+      { headers: corsHeaders }
     );
   } catch (error) {
+    console.error('Error in fetch-tokens function:', error);
     return new Response(
       JSON.stringify({ error: 'Failed to fetch tokens' }),
       {
         status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      },
+        headers: corsHeaders
+      }
     );
   }
 });
