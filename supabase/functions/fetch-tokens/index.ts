@@ -1,6 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { format } from 'npm:date-fns';
-
+// Don't use external serve import, use built-in Deno.serve
 const CMC_API_KEY = Deno.env.get('CMC_API_KEY') || '';
 const CMC_LISTINGS_NEW_URL = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/new';
 const JUPITER_TOKENS_URL = 'https://quote-api.jup.ag/v6/tokens';
@@ -14,6 +12,11 @@ const corsHeaders = {
 
 async function getNewCmcTokens() {
   try {
+    if (!CMC_API_KEY) {
+      console.error('CMC_API_KEY not set');
+      return [];
+    }
+
     const response = await fetch(CMC_LISTINGS_NEW_URL, {
       headers: {
         'X-CMC_PRO_API_KEY': CMC_API_KEY,
@@ -21,7 +24,8 @@ async function getNewCmcTokens() {
     });
 
     if (!response.ok) {
-      throw new Error(`CMC API error: ${response.status}`);
+      console.error(`CMC API error: ${response.status}, ${await response.text()}`);
+      return [];
     }
 
     const data = await response.json();
@@ -47,7 +51,8 @@ async function getJupiterTokens() {
   try {
     const response = await fetch(JUPITER_TOKENS_URL);
     if (!response.ok) {
-      throw new Error(`Jupiter API error: ${response.status}`);
+      console.error(`Jupiter API error: ${response.status}, ${await response.text()}`);
+      return [];
     }
 
     const data = await response.json();
@@ -70,10 +75,13 @@ async function getJupiterTokens() {
   }
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { 
+      status: 204,
+      headers: corsHeaders 
+    });
   }
 
   try {
@@ -84,14 +92,24 @@ serve(async (req) => {
 
     const allTokens = [...cmcTokens, ...jupiterTokens];
 
+    if (allTokens.length === 0) {
+      console.warn('No tokens fetched from either source');
+    }
+
     return new Response(
       JSON.stringify(allTokens),
-      { headers: corsHeaders }
+      { 
+        status: 200,
+        headers: corsHeaders 
+      }
     );
   } catch (error) {
     console.error('Error in fetch-tokens function:', error);
     return new Response(
-      JSON.stringify({ error: 'Failed to fetch tokens' }),
+      JSON.stringify({ 
+        error: 'Failed to fetch tokens',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }),
       {
         status: 500,
         headers: corsHeaders

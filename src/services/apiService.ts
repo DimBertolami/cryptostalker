@@ -8,22 +8,23 @@ import { format, parseISO, differenceInHours } from 'date-fns';
  */
 export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
   try {
-    const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-tokens`,
-      {
-        headers: {
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Accept': 'application/json',
-        },
-      }
-    );
+    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-tokens`;
+    
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      throw new Error('Missing required environment variables');
+    }
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        'Accept': 'application/json',
+      },
+    });
 
     if (!response.ok) {
-      const contentType = response.headers.get('content-type');
-      if (contentType && !contentType.includes('application/json')) {
-        throw new Error(`Invalid response content-type: ${contentType}`);
-      }
-      throw new Error(`API error: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`API error: ${response.status} - ${errorText}`);
     }
 
     const contentType = response.headers.get('content-type');
@@ -32,6 +33,10 @@ export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
     }
 
     const tokens = await response.json();
+    
+    if (!Array.isArray(tokens)) {
+      throw new Error('Invalid response format: expected an array');
+    }
 
     // Process and return the tokens
     return tokens.map((token: any) => ({
