@@ -39,7 +39,11 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
       });
 
       // Filter for new cryptos (< 24h old)
-      const newCryptos = processedCryptos.filter(crypto => crypto.age_hours !== undefined && crypto.age_hours < 24);
+      const newCryptos = processedCryptos.filter(crypto => 
+        crypto.age_hours !== undefined && 
+        crypto.age_hours < 24 &&
+        crypto.current_price > 0
+      );
       
       // Filter for high value trades (> $1.5M)
       const highValueCryptos = newCryptos.filter(
@@ -82,10 +86,11 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
       });
       
       set({
-        cryptos: data,
+        cryptos: processedCryptos,
         newCryptos,
         highValueCryptos: updatedHighValueCryptos,
-        loading: false
+        loading: false,
+        error: null
       });
       
       // Check for auto-trading conditions
@@ -116,7 +121,12 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
       
     } catch (error) {
       console.error("Error fetching cryptocurrencies:", error);
-      set({ error: "Failed to fetch cryptocurrency data", loading: false });
+      set({ 
+        error: "Failed to fetch cryptocurrency data", 
+        loading: false,
+        newCryptos: [],
+        highValueCryptos: []
+      });
     }
   },
 
