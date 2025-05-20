@@ -6,18 +6,28 @@ import { format, parseISO, differenceInHours } from 'date-fns';
  * Fetches new cryptocurrencies from both CoinMarketCap and Jupiter
  * @returns {Promise<Cryptocurrency[]>}
  */
+import { withRetry } from '../utils/apiRetry';
+
 export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
   try {
     // Use direct API call instead of Supabase function
-    const response = await axios.get('https://api.coingecko.com/api/v3/coins/markets', {
-      params: {
-        vs_currency: 'usd',
-        order: 'created_desc',
-        per_page: 100,
-        sparkline: true,
-        price_change_percentage: '24h'
-      }
-    });
+    const response = await withRetry(() => 
+      axios.get('https://api.coingecko.com/api/v3/coins/markets', {
+        params: {
+          vs_currency: 'usd',
+          order: 'created_desc',
+          per_page: 100,
+          sparkline: true,
+          price_change_percentage: '24h'
+        },
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000 // 10 second timeout
+      })
+    );
 
     if (!response.data || !Array.isArray(response.data)) {
       throw new Error('Invalid response format: expected an array');
