@@ -15,6 +15,15 @@ export interface Cryptocurrency {
   meets_threshold?: boolean;
   consecutive_decreases?: number;
   price_history?: number[];
+  local_min?: boolean;
+  local_max?: boolean;
+  trade_signals?: TradeSignal[];
+}
+
+export interface TradeSignal {
+  type: 'buy' | 'sell';
+  price: number;
+  timestamp: number;
 }
 
 export interface Trade {
@@ -28,6 +37,7 @@ export interface Trade {
   exchange: 'bitvavo' | 'binance';
   isAuto: boolean;
   isSimulated: boolean;
+  signalType?: 'local_minimum' | 'local_maximum';
 }
 
 export interface TradeableCrypto {
