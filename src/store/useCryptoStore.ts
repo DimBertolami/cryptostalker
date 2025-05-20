@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { CryptoState, Cryptocurrency, Trade, TradeableCrypto } from '../types';
 import { fetchNewCryptocurrencies } from '../services/apiService';
 import toast from 'react-hot-toast';
+import { generateTradeSignals } from '../utils/tradingStrategy';
 
 const useCryptoStore = create<CryptoState>((set, get) => ({
   cryptos: [],
@@ -25,8 +26,20 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
       set({ loading: true, error: null });
       const data = await fetchNewCryptocurrencies();
       
+      // Process cryptocurrencies and generate trade signals
+      const processedCryptos = data.map(crypto => {
+        if (crypto.price_history && crypto.price_history.length > 0) {
+          const trade_signals = generateTradeSignals(crypto);
+          return {
+            ...crypto,
+            trade_signals
+          };
+        }
+        return crypto;
+      });
+
       // Filter for new cryptos (< 24h old)
-      const newCryptos = data.filter(crypto => crypto.age_hours !== undefined && crypto.age_hours < 24);
+      const newCryptos = processedCryptos.filter(crypto => crypto.age_hours !== undefined && crypto.age_hours < 24);
       
       // Filter for high value trades (> $1.5M)
       const highValueCryptos = newCryptos.filter(

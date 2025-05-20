@@ -14,6 +14,9 @@ import {
 } from 'chart.js';
 import useCryptoStore from '../store/useCryptoStore';
 import clsx from 'clsx';
+import { Chart } from 'react-chartjs-2';
+import annotationPlugin from 'chartjs-plugin-annotation';
+Chart.register(annotationPlugin);
 
 // Register Chart.js components
 ChartJS.register(
@@ -105,6 +108,25 @@ const Portfolio: React.FC = () => {
         bodyColor: '#94a3b8',
         padding: 12,
         displayColors: true
+      },
+      annotation: {
+        annotations: position.trade_signals?.map((signal, index) => ({
+          type: 'point',
+          xValue: history.timestamps[index],
+          yValue: signal.price,
+          backgroundColor: signal.type === 'buy' ? '#22c55e' : '#ef4444',
+          borderColor: 'white',
+          borderWidth: 2,
+          radius: 6,
+          label: {
+            content: signal.type === 'buy' ? 'B' : 'S',
+            enabled: true,
+            color: 'white',
+            font: {
+              weight: 'bold'
+            }
+          }
+        })) || []
       }
     }
   };
