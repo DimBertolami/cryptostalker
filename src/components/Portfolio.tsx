@@ -10,6 +10,7 @@ import {
   Title,
   Tooltip,
   Legend,
+  Filler,
   ChartOptions
 } from 'chart.js';
 import useCryptoStore from '../store/useCryptoStore';
@@ -25,6 +26,7 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
+  Filler,
   annotationPlugin
 );
 

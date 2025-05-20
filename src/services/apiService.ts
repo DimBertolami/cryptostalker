@@ -2,32 +2,54 @@ import axios from 'axios';
 import { Cryptocurrency } from '../types';
 import { format, parseISO, differenceInHours } from 'date-fns';
 
+const CORS_PROXY = 'https://corsproxy.io/?';
+const API_BASE = 'https://api.coingecko.com/api/v3';
+
+const fetchWithRetry = async (url: string, retries = 3) => {
+  try {
+    const response = await axios.get(`${CORS_PROXY}${encodeURIComponent(url)}`, {
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'x-requested-with': 'XMLHttpRequest'
+      },
+      timeout: 10000
+    });
+    
+    // Handle rate limiting
+    if (response.status === 429) {
+      if (retries > 0) {
+        await new Promise(res => setTimeout(res, 2000));
+        return fetchWithRetry(url, retries - 1);
+      }
+      throw new Error('API rate limit exceeded');
+    }
+    
+    return response;
+  } catch (error) {
+    if (retries > 0) {
+      await new Promise(res => setTimeout(res, 1000));
+      return fetchWithRetry(url, retries - 1);
+    }
+    throw error;
+  }
+};
+
 /**
  * Fetches new cryptocurrencies from both CoinMarketCap and Jupiter
  * @returns {Promise<Cryptocurrency[]>}
  */
-import { withRetry } from '../utils/apiRetry';
-
 export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
   try {
-    // Use direct API call instead of Supabase function
-    const response = await withRetry(() => 
-      axios.get('https://api.coingecko.com/api/v3/coins/markets', {
-        params: {
-          vs_currency: 'usd',
-          order: 'created_desc',
-          per_page: 100,
-          sparkline: true,
-          price_change_percentage: '24h'
-        },
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000 // 10 second timeout
-      })
-    );
+    const url = `${API_BASE}/coins/markets?${new URLSearchParams({
+      vs_currency: 'usd',
+      order: 'created_desc',
+      per_page: '100',
+      sparkline: 'true',
+      price_change_percentage: '24h'
+    })}`;
+
+    const response = await fetchWithRetry(url);
 
     if (!response.data || !Array.isArray(response.data)) {
       throw new Error('Invalid response format: expected an array');
@@ -53,7 +75,7 @@ export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
 
     return tokens;
   } catch (error) {
-    console.error('Error fetching cryptocurrencies:', error);
+    console.error('Failed to fetch cryptocurrencies after retries:', error);
     throw error;
   }
-}
+};
