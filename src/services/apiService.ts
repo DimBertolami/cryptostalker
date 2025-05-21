@@ -81,6 +81,7 @@ export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
             age_hours: ageHours, // Add this for the store filter
             volume_24h: coin.quote.USD.volume_24h,
             market_cap: coin.quote.USD.market_cap, // Add market cap for high value filter
+            price_change_percentage_24h: coin.quote.USD.percent_change_24h, // Add 24h change percentage
             date_added: coin.date_added
           };
         });
