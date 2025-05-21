@@ -19,6 +19,11 @@ const NewCryptosTable: React.FC = () => {
   const getMarketCap = (coin: Cryptocurrency) => {
     return coin.quote?.USD?.market_cap || coin.market_cap || 0;
   };
+
+  // Helper function to get the trading volume
+  const getVolume = (coin: Cryptocurrency) => {
+    return coin.quote?.USD?.volume_24h || coin.volume_24h || 0;
+  };
   return (
     <div className="p-4">
       <h2 className="text-xl font-semibold text-white mb-4">Cryptocurrency List</h2>
@@ -42,6 +47,12 @@ const NewCryptosTable: React.FC = () => {
                 const price = getPrice(coin);
                 const change24h = get24hChange(coin);
                 const marketCap = getMarketCap(coin);
+                const volume = getVolume(coin);
+                
+                // For logging: check why this coin was selected as high value
+                if (marketCap < 1000000 && volume > 500000) {
+                  console.log(`High value coin ${coin.name} qualified due to volume: $${(volume/1000000).toFixed(2)}M volume`);
+                }
                 
                 return (
                   <tr key={coin.id} className="hover:bg-gray-800">
@@ -70,7 +81,11 @@ const NewCryptosTable: React.FC = () => {
                       {change24h.toFixed(2)}%
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                      ${marketCap ? (marketCap / 1000000).toFixed(2) + 'M' : 'N/A'}
+                      {marketCap > 0 ? 
+                        `$${(marketCap / 1000000).toFixed(2)}M` : 
+                        volume > 0 ? 
+                          `Vol: $${(volume / 1000000).toFixed(2)}M` : 
+                          'N/A'}
                     </td>
                   </tr>
                 );
