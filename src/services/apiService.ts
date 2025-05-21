@@ -48,12 +48,13 @@ export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
             params: {
                 endpoint: 'cryptocurrency/listings/latest',
                 start: '1',
-                limit: '100',
+                limit: '5000', // Increased to maximum supported by CoinMarketCap
                 convert: 'USD'
             }
         });
         
-        console.log('API Response Data:', response.data); // DEBUG LOG
+        // Reduce console logging - just show API was successful
+        console.log(`API fetched ${response.data.data.length} coins successfully from CoinMarketCap`);
         
         const data = response.data.data;
 

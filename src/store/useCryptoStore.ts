@@ -35,11 +35,32 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
         return crypto;
       });
 
-      // Show all cryptocurrencies for now
-      const newCryptos = processedCryptos;
+      // Store all fetched cryptocurrencies
+      const allCryptos = processedCryptos;
       
-      // Store all cryptos in both arrays for now
-      const highValueCryptos = processedCryptos;
+      console.log(`Processing ${processedCryptos.length} coins to find recent additions...`);
+      
+      // Filter for new cryptos (< 24h old)
+      const newCryptos = processedCryptos.filter(crypto => {
+        // Get age in hours using type assertion to avoid TypeScript error
+        const age = (crypto as any).age_hours;
+        // Check if coin was added within the last 24 hours
+        const isNew = age !== undefined && age < 24;
+        
+        // Log each newly found coin for visibility
+        if (isNew) {
+          console.log(`🆕 New coin found: ${crypto.name} (${crypto.symbol}) - Added ${age?.toFixed(1) || '?'} hours ago`);
+        }
+        
+        return isNew;
+      });
+      
+      // High value cryptocurrencies - coins with significant market presence
+      const highValueCryptos = newCryptos.filter(crypto => {
+        const marketCap = (crypto as any).market_cap ?? 0;
+        const volume = (crypto as any).volume_24h ?? 0;
+        return marketCap > 1000000 || volume > 500000; // $1M market cap or $500K volume
+      });
       
       // Update all existing high value cryptos with new price data
       const updatedHighValueCryptos = [...get().highValueCryptos];
@@ -91,9 +112,13 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
       });
       
       // Fix TypeScript errors by ensuring nullish coalescing for optional properties
+      // Log summary of found coins
+      console.log(`✅ Found ${newCryptos.length} new coins added in the last 24 hours`);
+      console.log(`✅ ${highValueCryptos.length} of these are high-value new coins`);
+      
       set({
-        cryptos: processedCryptos,
-        newCryptos: newCryptos, 
+        cryptos: allCryptos,         // Store ALL coins in the cryptos array
+        newCryptos: newCryptos,      // Only new coins (< 24h old) in newCryptos
         highValueCryptos: updatedHighValueCryptos,
         loading: false,
         error: null
