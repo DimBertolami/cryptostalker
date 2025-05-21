@@ -32,21 +32,149 @@ ChartJS.register(
 
 const Portfolio: React.FC = () => {
   const { portfolio, sellManual, updateInterval } = useCryptoStore();
-  const [priceHistory, setPriceHistory] = useState<Map<string, { prices: number[], timestamps: string[] }>>(new Map());
+  const [priceHistory, setPriceHistory] = useState<Map<string, { 
+    prices: number[], 
+    timestamps: string[],
+    basePrice: number,
+    normalizedPrices: number[]
+  }>>(new Map());
   
   // Update price history when portfolio changes
   useEffect(() => {
     portfolio.forEach(position => {
       setPriceHistory(prev => {
-        const history = prev.get(position.id) || { prices: [], timestamps: [] };
         const now = new Date().toLocaleTimeString();
+        const history = prev.get(position.id) || { 
+          prices: [], 
+          timestamps: [], 
+          basePrice: position.averageBuyPrice,
+          normalizedPrices: []
+        };
         
-        // Keep last 50 data points
-        const prices = [...history.prices.slice(-49), position.currentPrice];
-        const timestamps = [...history.timestamps.slice(-49), now];
+        // Ensure we have all purchase points if this is new
+        if (history.prices.length === 0) {
+          // Add all purchases from history if available
+          if (position.purchaseHistory && position.purchaseHistory.length > 0) {
+            position.purchaseHistory.forEach((purchase: any) => {
+              const purchaseTime = new Date(purchase.timestamp).toLocaleTimeString();
+              if (!history.timestamps.includes(purchaseTime)) {
+                history.timestamps.push(purchaseTime);
+                history.prices.push(purchase.price);
+                history.normalizedPrices.push(0); // Buy point is at y=0
+              }
+            });
+          }
+          // Fall back to original purchase timestamp
+          else if (position.purchaseTimestamp) {
+            const purchaseTime = new Date(position.purchaseTimestamp).toLocaleTimeString();
+            history.timestamps.push(purchaseTime);
+            history.prices.push(position.averageBuyPrice);
+            history.normalizedPrices.push(0); // Buy point is at y=0
+          }
+        }
+        
+        // Check if we need to add any new purchase points from history
+        if (position.purchaseHistory) {
+          position.purchaseHistory.forEach((purchase: any) => {
+            const purchaseTime = new Date(purchase.timestamp).toLocaleTimeString();
+            if (!history.timestamps.includes(purchaseTime)) {
+              // Find the right position to insert chronologically
+              const now = new Date().getTime();
+              const purchaseDate = new Date(purchase.timestamp).getTime();
+              const timeGap = now - purchaseDate;
+              
+              // If the purchase was within the last minute, add it to the chart
+              if (timeGap < 60000) {
+                history.timestamps.push(purchaseTime);
+                history.prices.push(purchase.price);
+                
+                // Calculate normalized price
+                const normalizedPrice = ((purchase.price - history.basePrice) / history.basePrice) * 100;
+                history.normalizedPrices.push(normalizedPrice);
+              }
+            }
+          });
+        }
+        
+        // Track highest price
+        if (position.currentPrice > position.highestPrice) {
+          position.highestPrice = position.currentPrice;
+          position.highestPriceTimestamp = Date.now();
+        }
+        
+        // Add current price point
+        const prices = [...history.prices, position.currentPrice];
+        const timestamps = [...history.timestamps, now];
+        
+        // Calculate normalized prices relative to purchase price
+        // This makes the buy point always at y=0 and other prices relative to it
+        const normalizedPrices = prices.map(price => 
+          ((price - history.basePrice) / history.basePrice) * 100
+        );
+        
+        // Keep history bounded but ensure the buy point is always included
+        let newPrices = prices;
+        let newTimestamps = timestamps;
+        let newNormalizedPrices = normalizedPrices;
+        
+        const maxPoints = 50;
+        
+        if (prices.length > maxPoints) {
+          // Always keep purchase timestamps (could be multiple) and add newer points
+          const purchaseIndices: number[] = [];
+          
+          // Find indices of all purchase timestamps
+          if (position.purchaseHistory && position.purchaseHistory.length > 0) {
+            position.purchaseHistory.forEach((purchase: any) => {
+              const purchaseTime = new Date(purchase.timestamp).toLocaleTimeString();
+              const index = history.timestamps.findIndex(t => t === purchaseTime);
+              if (index >= 0) {
+                purchaseIndices.push(index);
+              }
+            });
+          } else if (position.purchaseTimestamp) {
+            const purchaseIndex = history.timestamps.findIndex(
+              t => new Date(position.purchaseTimestamp).toLocaleTimeString() === t
+            );
+            if (purchaseIndex >= 0) {
+              purchaseIndices.push(purchaseIndex);
+            }
+          }
+          
+          // Use the first purchase index if available
+          const purchaseIndex = purchaseIndices.length > 0 ? purchaseIndices[0] : -1;
+          
+          if (purchaseIndex >= 0) {
+            // Keep purchase point and the most recent points
+            newPrices = [
+              prices[purchaseIndex], 
+              ...prices.slice(-(maxPoints - 1))
+            ];
+            
+            newTimestamps = [
+              timestamps[purchaseIndex],
+              ...timestamps.slice(-(maxPoints - 1))
+            ];
+            
+            newNormalizedPrices = [
+              normalizedPrices[purchaseIndex],
+              ...normalizedPrices.slice(-(maxPoints - 1))
+            ];
+          } else {
+            // If we can't find the purchase point, just keep the most recent points
+            newPrices = prices.slice(-maxPoints);
+            newTimestamps = timestamps.slice(-maxPoints);
+            newNormalizedPrices = normalizedPrices.slice(-maxPoints);
+          }
+        }
         
         const newHistory = new Map(prev);
-        newHistory.set(position.id, { prices, timestamps });
+        newHistory.set(position.id, { 
+          prices: newPrices, 
+          timestamps: newTimestamps,
+          basePrice: history.basePrice,
+          normalizedPrices: newNormalizedPrices
+        });
         return newHistory;
       });
     });
@@ -62,6 +190,112 @@ const Portfolio: React.FC = () => {
     return total + position.profitLoss;
   }, 0);
   
+  // Create chart annotations for buy/sell points
+  const createChartAnnotationsForPosition = (position: any, history: any) => {
+    let annotations: any = {};
+    
+    // Add buy annotations for all purchases in history if available
+    if (position.purchaseHistory && position.purchaseHistory.length > 0) {
+      position.purchaseHistory.forEach((purchase: any, index: number) => {
+        const purchaseTime = new Date(purchase.timestamp).toLocaleTimeString();
+        annotations[`buyLine${index}`] = {
+          type: 'line',
+          xMin: purchaseTime,
+          xMax: purchaseTime,
+          yMin: 0,
+          yMax: 'max',
+          borderColor: 'rgba(0, 255, 0, 0.7)',
+          borderWidth: 2,
+          label: {
+            display: true,
+            content: 'B',
+            position: 'start',
+            backgroundColor: 'rgba(0, 155, 0, 0.9)',
+            color: 'white',
+            font: {
+              weight: 'bold'
+            }
+          }
+        };
+      });
+    }
+    // Fall back to original purchase timestamp if no purchase history
+    else if (position.purchaseTimestamp) {
+      const purchaseTime = new Date(position.purchaseTimestamp).toLocaleTimeString();
+      annotations.buyLine = {
+        type: 'line',
+        xMin: purchaseTime,
+        xMax: purchaseTime,
+        yMin: 0,
+        yMax: 'max',
+        borderColor: 'rgba(0, 255, 0, 0.7)',
+        borderWidth: 2,
+        label: {
+          display: true,
+          content: 'B',
+          position: 'start',
+          backgroundColor: 'rgba(0, 155, 0, 0.9)',
+          color: 'white',
+          font: {
+            weight: 'bold'
+          }
+        }
+      };
+    }
+    
+    // Add sell annotation if the position has been sold
+    if (position.sellTimestamp) {
+      const sellTime = new Date(position.sellTimestamp).toLocaleTimeString();
+      annotations.sellLine = {
+        type: 'line',
+        xMin: sellTime,
+        xMax: sellTime,
+        yMin: 'min',
+        yMax: 'max',
+        borderColor: 'rgba(255, 0, 0, 0.7)',
+        borderWidth: 2,
+        label: {
+          display: true,
+          content: 'S',
+          position: 'start',
+          backgroundColor: 'rgba(155, 0, 0, 0.9)',
+          color: 'white',
+          font: {
+            weight: 'bold'
+          }
+        }
+      };
+    }
+    
+    // Add highest price marker if it exists and is different from purchase
+    if (position.highestPriceTimestamp && position.highestPriceTimestamp !== position.purchaseTimestamp) {
+      const highestTime = new Date(position.highestPriceTimestamp).toLocaleTimeString();
+      const normalizedHighestPrice = ((position.highestPrice - history.basePrice) / history.basePrice) * 100;
+      
+      annotations.highestPoint = {
+        type: 'point',
+        xValue: highestTime,
+        yValue: normalizedHighestPrice,
+        backgroundColor: 'rgba(255, 215, 0, 0.7)',
+        borderColor: 'gold',
+        borderWidth: 2,
+        radius: 4,
+        label: {
+          display: true,
+          content: 'H',
+          position: 'top',
+          backgroundColor: 'rgba(218, 165, 32, 0.9)',
+          color: 'white',
+          font: {
+            weight: 'bold'
+          }
+        }
+      };
+    }
+    
+    return annotations;
+  };
+  
   // Chart options
   const chartOptions: ChartOptions<'line'> = {
     responsive: true,
@@ -76,7 +310,14 @@ const Portfolio: React.FC = () => {
         },
         ticks: {
           color: '#94a3b8'
-        }
+        },
+        title: {
+          display: true,
+          text: '% Change from Purchase',
+          color: '#94a3b8'
+        },
+        // Auto-scale but ensure 0 is included
+        beginAtZero: true
       },
       x: {
         grid: {
@@ -108,12 +349,37 @@ const Portfolio: React.FC = () => {
         titleColor: '#fff',
         bodyColor: '#94a3b8',
         padding: 12,
-        displayColors: true
+        displayColors: true,
+        callbacks: {
+          label: function(context) {
+            let label = context.dataset.label || '';
+            if (label) {
+              label += ': ';
+            }
+            if (context.parsed.y !== null) {
+              // Show both the percentage and actual price
+              const percentChange = context.parsed.y.toFixed(2) + '%';
+              return `${label}${percentChange}`;
+            }
+            return label;
+          },
+          afterLabel: function(context) {
+            const dataIndex = context.dataIndex;
+            const datasetIndex = context.datasetIndex;
+            
+            // Get the actual price from the original prices array
+            const position = portfolio[datasetIndex];
+            const history = priceHistory.get(position.id);
+            
+            if (history && history.prices[dataIndex]) {
+              return `Price: $${history.prices[dataIndex].toFixed(6)}`;
+            }
+            return '';
+          }
+        }
       },
       annotation: {
-        annotations: {
-          // Empty annotations object as a placeholder
-        }
+        annotations: {}
       }
     }
   };
@@ -127,91 +393,81 @@ const Portfolio: React.FC = () => {
       current_price: position.currentPrice
     };
     
-    sellManual(cryptoToSell as any, position.balance, 'bitvavo');
+    sellManual(cryptoToSell, position.balance, 'bitvavo');
   };
   
   return (
-    <div className="p-4">
-      <h2 className="text-xl font-semibold text-white mb-4">Portfolio</h2>
-      
-      {/* Portfolio Summary */}
-      {portfolio.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-background rounded-lg p-4 border border-neutral-700">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm text-neutral-400">Total Value</p>
-                <p className="text-2xl font-semibold text-white mt-1">${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-              </div>
-              <DollarSign className="h-5 w-5 text-primary" />
-            </div>
+    <div>
+      <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-background rounded-lg p-4 border border-neutral-700">
+          <div className="flex items-center mb-2">
+            <Wallet className="h-5 w-5 text-neutral-400 mr-2" />
+            <h3 className="text-sm font-medium text-neutral-400">Portfolio Value</h3>
           </div>
-          
-          <div className="bg-background rounded-lg p-4 border border-neutral-700">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm text-neutral-400">Total P/L</p>
-                <p className={clsx(
-                  "text-2xl font-semibold mt-1",
-                  totalProfitLoss >= 0 ? "text-success" : "text-error"
-                )}>
-                  {totalProfitLoss >= 0 ? '+' : ''}{totalProfitLoss.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              </div>
-              {totalProfitLoss >= 0 ? (
-                <TrendingUp className="h-5 w-5 text-success" />
-              ) : (
-                <TrendingDown className="h-5 w-5 text-error" />
-              )}
-            </div>
+          <p className="text-2xl font-semibold text-white">
+            ${totalValue.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            })}
+          </p>
+        </div>
+        
+        <div className="bg-background rounded-lg p-4 border border-neutral-700">
+          <div className="flex items-center mb-2">
+            <BarChart3 className="h-5 w-5 text-neutral-400 mr-2" />
+            <h3 className="text-sm font-medium text-neutral-400">Portfolio Performance</h3>
           </div>
-          
-          <div className="bg-background rounded-lg p-4 border border-neutral-700">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm text-neutral-400">Assets</p>
-                <p className="text-2xl font-semibold text-white mt-1">{portfolio.length}</p>
-              </div>
-              <Wallet className="h-5 w-5 text-primary" />
-            </div>
-          </div>
-          
-          <div className="bg-background rounded-lg p-4 border border-neutral-700">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm text-neutral-400">Trading Mode</p>
-                <p className="text-xl font-semibold mt-1 flex items-center">
-                  <span className={clsx(
-                    "px-2 py-0.5 rounded text-sm",
-                    useCryptoStore.getState().isLiveTrading
-                      ? "bg-error/20 text-error-light"
-                      : "bg-secondary/20 text-secondary-light"
-                  )}>
-                    {useCryptoStore.getState().isLiveTrading ? 'Live Trading' : 'Paper Trading'}
-                  </span>
-                </p>
-              </div>
-              <BarChart3 className="h-5 w-5 text-primary" />
-            </div>
+          <div className="flex items-center">
+            {totalProfitLoss >= 0 ? (
+              <TrendingUp className="h-5 w-5 text-green-500 mr-2" />
+            ) : (
+              <TrendingDown className="h-5 w-5 text-red-500 mr-2" />
+            )}
+            <p className={clsx(
+              "text-2xl font-semibold",
+              totalProfitLoss >= 0 ? "text-green-500" : "text-red-500"
+            )}>
+              ${Math.abs(totalProfitLoss).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })}
+            </p>
           </div>
         </div>
-      )}
+        
+        <div className="bg-background rounded-lg p-4 border border-neutral-700">
+          <div className="flex items-center mb-2">
+            <DollarSign className="h-5 w-5 text-neutral-400 mr-2" />
+            <h3 className="text-sm font-medium text-neutral-400">Assets</h3>
+          </div>
+          <p className="text-2xl font-semibold text-white">{portfolio.length}</p>
+        </div>
+        
+        <div className="bg-background rounded-lg p-4 border border-neutral-700">
+          <div className="flex items-center mb-2">
+            <BarChart3 className="h-5 w-5 text-neutral-400 mr-2" />
+            <h3 className="text-sm font-medium text-neutral-400">Update Interval</h3>
+          </div>
+          <p className="text-2xl font-semibold text-white">{updateInterval}s</p>
+        </div>
+      </div>
       
-      {/* Price Charts */}
       {portfolio.length > 0 && (
         <div className="mb-6 grid grid-cols-1 gap-4">
-          {portfolio.map(position => {
+          {portfolio.map((position, index) => {
             const history = priceHistory.get(position.id);
             if (!history) return null;
             
+            // Create chart data using normalized prices (relative to purchase price)
             const chartData = {
               labels: history.timestamps,
               datasets: [
                 {
                   label: `${position.name} (${position.symbol.toUpperCase()})`,
-                  data: history.prices,
-                  borderColor: '#3b82f6',
-                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  data: history.normalizedPrices,
+                  borderColor: position.profitLoss >= 0 ? '#10b981' : '#ef4444',
+                  backgroundColor: position.profitLoss >= 0 ? 
+                    'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
                   borderWidth: 2,
                   pointRadius: 0,
                   pointHoverRadius: 4,
@@ -221,6 +477,26 @@ const Portfolio: React.FC = () => {
               ]
             };
             
+            // Create custom chart options with appropriate Y-axis scale and annotations
+            const positionChartOptions = {
+              ...chartOptions,
+              scales: {
+                ...chartOptions.scales,
+                y: {
+                  ...chartOptions.scales.y,
+                  // Ensure proper scaling that always includes 0
+                  suggestedMin: Math.min(-1, ...history.normalizedPrices), // At least -1%
+                  suggestedMax: Math.max(1, ...history.normalizedPrices)   // At least +1%
+                }
+              },
+              plugins: {
+                ...chartOptions.plugins,
+                annotation: {
+                  annotations: createChartAnnotationsForPosition(position, history)
+                }
+              }
+            };
+            
             return (
               <div key={position.id} className="bg-background rounded-lg p-4 border border-neutral-700">
                 <div className="flex justify-between items-center mb-4">
@@ -228,15 +504,36 @@ const Portfolio: React.FC = () => {
                     <h3 className="font-medium text-white">{position.name}</h3>
                     <p className="text-sm text-neutral-400">Updated every {updateInterval}s</p>
                   </div>
-                  <p className="text-lg font-medium text-white">
-                    ${position.currentPrice.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 6
-                    })}
-                  </p>
+                  <div className="text-right">
+                    <p className="text-lg font-medium text-white">
+                      ${position.currentPrice.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 6
+                      })}
+                    </p>
+                    <p className={clsx(
+                      "text-sm",
+                      position.profitLossPercentage >= 0 ? "text-green-400" : "text-red-400"
+                    )}>
+                      {position.profitLossPercentage >= 0 ? "+" : ""}
+                      {position.profitLossPercentage.toFixed(2)}%
+                    </p>
+                  </div>
                 </div>
                 <div className="h-[200px]">
-                  <Line options={chartOptions} data={chartData} />
+                  <Line options={positionChartOptions} data={chartData} />
+                </div>
+                <div className="mt-4 flex justify-between items-center">
+                  <div>
+                    <p className="text-sm text-neutral-400">Amount: {position.balance} {position.symbol.toUpperCase()}</p>
+                    <p className="text-sm text-neutral-400">Avg Buy: ${position.averageBuyPrice.toFixed(6)}</p>
+                  </div>
+                  <button
+                    onClick={() => handleSell(position)}
+                    className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+                  >
+                    Sell All
+                  </button>
                 </div>
               </div>
             );
@@ -248,97 +545,96 @@ const Portfolio: React.FC = () => {
         <div className="bg-background rounded-lg p-8 text-center border border-neutral-700">
           <Wallet className="h-12 w-12 text-neutral-500 mx-auto mb-3" />
           <h3 className="text-lg font-medium text-white mb-1">Your portfolio is empty</h3>
-          <p className="text-neutral-400">
-            Buy some cryptocurrencies to get started.
-          </p>
+          <p className="text-neutral-400">Buy some cryptocurrencies to get started</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full">
-            <thead>
-              <tr className="border-b border-neutral-700">
-                <th className="text-left py-3 px-4 text-sm font-medium text-neutral-400">Asset</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-neutral-400">Balance</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-neutral-400">Avg. Buy Price</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-neutral-400">Current Price</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-neutral-400">Profit/Loss</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-neutral-400">Total Value</th>
-                <th className="text-center py-3 px-4 text-sm font-medium text-neutral-400">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {portfolio.map((position) => (
-                <tr key={position.id} className="border-b border-neutral-700 hover:bg-background/50 transition-colors">
-                  <td className="py-4 px-4">
-                    <div className="flex items-center">
-                      <div>
-                        <p className="font-medium text-white">{position.name}</p>
-                        <p className="text-xs text-neutral-400">{position.symbol.toUpperCase()}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-4 text-right font-mono">
-                    {position.balance.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 8
-                    })}
-                  </td>
-                  <td className="py-4 px-4 text-right font-mono">
-                    ${position.averageBuyPrice.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 6
-                    })}
-                  </td>
-                  <td className="py-4 px-4 text-right font-mono">
-                    ${position.currentPrice.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 6
-                    })}
-                  </td>
-                  <td className="py-4 px-4 text-right">
-                    <div className="flex flex-col items-end">
-                      <div className={clsx(
-                        "inline-flex items-center",
-                        position.profitLoss >= 0 ? "text-success" : "text-error"
-                      )}>
-                        {position.profitLoss >= 0 ? (
-                          <TrendingUp className="h-3 w-3 mr-1" />
-                        ) : (
-                          <TrendingDown className="h-3 w-3 mr-1" />
-                        )}
-                        <span className="font-mono">
-                          {position.profitLoss >= 0 ? '+' : ''}{Math.abs(position.profitLoss).toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2
-                          })}
-                        </span>
-                      </div>
-                      <div className={clsx(
-                        "text-xs",
-                        position.profitLossPercentage >= 0 ? "text-success" : "text-error"
-                      )}>
-                        {position.profitLossPercentage >= 0 ? '+' : ''}{position.profitLossPercentage.toFixed(2)}%
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-4 text-right font-mono">
-                    ${(position.balance * position.currentPrice).toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2
-                    })}
-                  </td>
-                  <td className="py-4 px-4 text-center">
-                    <button
-                      onClick={() => handleSell(position)}
-                      className="inline-flex items-center justify-center px-3 py-1 bg-error hover:bg-error-dark rounded-md text-white text-sm transition-colors"
-                    >
-                      Sell All
-                    </button>
-                  </td>
+        <div className="bg-background rounded-lg p-4 border border-neutral-700">
+          <h3 className="text-lg font-medium text-white mb-4">Assets</h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-neutral-700">
+              <thead>
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Asset</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Balance</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Avg. Buy Price</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Current Price</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Profit/Loss</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Total Value</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-neutral-400 uppercase tracking-wider">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-neutral-700">
+                {portfolio.map((position) => {
+                  const totalValue = position.balance * position.currentPrice;
+                  
+                  return (
+                    <tr key={position.id}>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-8 w-8">
+                            <div className="h-8 w-8 rounded-full bg-background-lighter flex items-center justify-center">
+                              <span className="text-xs text-white">{position.symbol.slice(0, 3)}</span>
+                            </div>
+                          </div>
+                          <div className="ml-3">
+                            <p className="text-sm font-medium text-white">{position.name}</p>
+                            <p className="text-xs text-neutral-400">{position.symbol.toUpperCase()}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-white">{position.balance}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-white">
+                        ${position.averageBuyPrice.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 6
+                        })}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-white">
+                        ${position.currentPrice.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 6
+                        })}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="text-sm">
+                          <p className={clsx(
+                            position.profitLoss >= 0 ? "text-green-400" : "text-red-400"
+                          )}>
+                            {position.profitLoss >= 0 ? "+" : ""}
+                            ${Math.abs(position.profitLoss).toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2
+                            })}
+                          </p>
+                          <p className={clsx(
+                            "text-xs",
+                            position.profitLossPercentage >= 0 ? "text-green-400" : "text-red-400"
+                          )}>
+                            {position.profitLossPercentage >= 0 ? "+" : ""}
+                            {position.profitLossPercentage.toFixed(2)}%
+                          </p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-white">
+                        ${totalValue.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2
+                        })}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <button
+                          onClick={() => handleSell(position)}
+                          className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-1 px-3 rounded"
+                        >
+                          Sell All
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

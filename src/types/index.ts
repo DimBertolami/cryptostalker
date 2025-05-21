@@ -1,88 +1,70 @@
 export interface Cryptocurrency {
-  // Required properties from CoinMarketCap API
   id: string;
-  symbol: string;
   name: string;
-  
-  // Properties we add in our API service
-  price: number;
-  current_price?: number; // Same as price, added for compatibility
-  date_added: string;
-  age_hours?: number;
-  volume_24h?: number;
+  symbol: string;
+  current_price?: number;
   market_cap?: number;
-  
-  // Optional properties from CoinGecko API or our app
-  image?: string;
   total_volume?: number;
-  high_24h?: number;
-  low_24h?: number;
   price_change_percentage_24h?: number;
-  market_cap_change_percentage_24h?: number;
-  created_at?: string;
-  meets_threshold?: boolean;
-  consecutive_decreases?: number;
-  price_history?: any[];
-  local_min?: boolean;
-  local_max?: boolean;
-  trade_signals?: TradeSignal[];
-  
-  // CoinMarketCap nested properties
+  age_hours?: number;
+  date_added?: string;
+  volume_24h?: number;
   quote?: {
-    USD?: {
+    USD: {
       price: number;
       volume_24h: number;
-      market_cap: number;
       percent_change_24h: number;
+      market_cap: number;
     }
   };
-}
-
-export interface TradingStats {
-  totalProfit: number;
-  successfulTrades: number;
-  failedTrades: number;
-  averageProfit: number;
-  largestGain: number;
-  largestLoss: number;
-  lastTradeProfit: number;
-}
-
-export interface CryptoState {
-  // State properties
-  cryptos: Cryptocurrency[];
-  newCryptos: Cryptocurrency[];
-  highValueCryptos: Cryptocurrency[];
-  loading: boolean;
-  error: null | string;
-  updateInterval: number;
-  autoRefresh?: boolean;
-  isLiveTrading: boolean;
-  isAutoTrading: boolean;
-  monitoredCrypto: Cryptocurrency | null;
-  trades: Trade[];
-  portfolio: TradeableCrypto[];
-  tradingStats: TradingStats;
-  focusedMonitoring: boolean;
-  isPaused?: boolean;
-  
-  // Actions
-  fetchCryptos: () => Promise<void>;
-  toggleAutoTrading: () => void;
-  toggleFocusedMonitoring: () => void;
-  getTradingStats: () => TradingStats;
-  setMonitoredCrypto?: (crypto: Cryptocurrency | null) => void;
-  setUpdateInterval?: (interval: number) => void;
-  toggleLiveTrading?: () => void;
-  togglePause?: () => void;
-  buyManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => Trade;
-  sellManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => Trade | null;
+  image?: string;
+  price?: number;
+  price_history?: number[];
+  consecutive_decreases?: number;
 }
 
 export interface TradeSignal {
   type: 'buy' | 'sell';
-  price: number;
+  reason: string;
   timestamp: number;
+  price: number;
+}
+
+export interface CryptoState {
+  cryptos: Cryptocurrency[];
+  newCryptos: Cryptocurrency[];
+  highValueCryptos: Cryptocurrency[];
+  loading: boolean;
+  error: string | null;
+  autoRefresh: boolean;
+  isLiveTrading: boolean;
+  isAutoTrading: boolean;
+  monitoredCrypto: Cryptocurrency | null;
+  focusedMonitoring: boolean;
+  tradingStats: {
+    totalProfit: number;
+    successfulTrades: number;
+    failedTrades: number;
+    averageProfit: number;
+    largestGain: number;
+    largestLoss: number;
+    lastTradeProfit: number;
+  };
+  trades: Trade[];
+  portfolio: TradeableCrypto[];
+  updateInterval: number;
+  isPaused: boolean;
+  
+  // Actions
+  toggleFocusedMonitoring: () => void;
+  togglePause: () => void;
+  fetchCryptos: () => Promise<void>;
+  buyManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => Trade;
+  sellManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => void;
+  toggleAutoTrading: () => void;
+  toggleLiveTrading: () => void;
+  updatePriceForCrypto: (cryptoId: string, newPrice: number) => void;
+  setUpdateInterval: (interval: number) => void;
 }
 
 export interface Trade {
@@ -99,6 +81,12 @@ export interface Trade {
   signalType?: 'local_minimum' | 'local_maximum';
 }
 
+export interface PurchaseEvent {
+  amount: number;
+  price: number;
+  timestamp: number;
+}
+
 export interface TradeableCrypto {
   id: string;
   name: string;
@@ -108,6 +96,11 @@ export interface TradeableCrypto {
   currentPrice: number;
   profitLoss: number;
   profitLossPercentage: number;
+  purchaseTimestamp: number;      // First purchase timestamp (for backward compatibility)
+  purchaseHistory: PurchaseEvent[]; // Track all purchases
+  highestPrice: number;           // Track the highest price seen
+  highestPriceTimestamp?: number; // When the highest price was reached
+  sellTimestamp?: number;         // When the position was sold (if applicable)
 }
 
 export interface AppState {
@@ -115,20 +108,23 @@ export interface AppState {
   toggleDarkMode: () => void;
 }
 
-// This interface was removed to avoid duplication with the CryptoState interface above
-
 export interface ExchangeState {
   exchanges: {
     bitvavo: {
-      connected: boolean;
       apiKey: string;
       apiSecret: string;
+      isConfigured: boolean;
     };
     binance: {
-      connected: boolean;
       apiKey: string;
       apiSecret: string;
+      isConfigured: boolean;
     };
   };
-  setApiKeys: (exchange: 'bitvavo' | 'binance', apiKey: string, apiSecret: string) => void;
+  
+  updateExchangeCredentials: (
+    exchange: 'bitvavo' | 'binance',
+    apiKey: string,
+    apiSecret: string
+  ) => void;
 }
