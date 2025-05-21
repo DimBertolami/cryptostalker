@@ -1,23 +1,41 @@
 export interface Cryptocurrency {
+  // Required properties from CoinMarketCap API
   id: string;
   symbol: string;
   name: string;
-  image: string;
-  current_price: number;
-  market_cap: number;
-  total_volume: number;
-  high_24h: number;
-  low_24h: number;
-  price_change_percentage_24h: number;
-  market_cap_change_percentage_24h: number;
-  created_at?: string;
+  
+  // Properties we add in our API service
+  price: number;
+  current_price?: number; // Same as price, added for compatibility
+  date_added: string;
   age_hours?: number;
+  volume_24h?: number;
+  market_cap?: number;
+  
+  // Optional properties from CoinGecko API or our app
+  image?: string;
+  total_volume?: number;
+  high_24h?: number;
+  low_24h?: number;
+  price_change_percentage_24h?: number;
+  market_cap_change_percentage_24h?: number;
+  created_at?: string;
   meets_threshold?: boolean;
   consecutive_decreases?: number;
-  price_history?: number[];
+  price_history?: any[];
   local_min?: boolean;
   local_max?: boolean;
   trade_signals?: TradeSignal[];
+  
+  // CoinMarketCap nested properties
+  quote?: {
+    USD?: {
+      price: number;
+      volume_24h: number;
+      market_cap: number;
+      percent_change_24h: number;
+    }
+  };
 }
 
 export interface TradeSignal {

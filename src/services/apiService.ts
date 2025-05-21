@@ -1,37 +1,36 @@
-import axios from 'axios';
-import { Cryptocurrency } from '../types';
-import { format, parseISO, differenceInHours } from 'date-fns';
+import axios, { AxiosRequestConfig } from 'axios';
 
-const CORS_PROXY = 'https://corsproxy.io/?';
-const API_BASE = 'https://api.coingecko.com/api/v3';
+const API_BASE = import.meta.env.DEV 
+    ? 'http://localhost:5001' 
+    : window.location.origin;
 
-const fetchWithRetry = async (url: string, retries = 3) => {
+interface Cryptocurrency {
+    id: string;
+    name: string;
+    symbol: string;
+    price: number;
+    volume_24h: number;
+    date_added: string;
+}
+
+const fetchWithRetry = async (url: string, config?: AxiosRequestConfig, retries = 3) => {
   try {
-    const response = await axios.get(`${CORS_PROXY}${encodeURIComponent(url)}`, {
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'x-requested-with': 'XMLHttpRequest'
-      },
-      timeout: 10000
-    });
-    
-    // Handle rate limiting
+    const response = await axios.get(url, config);
     if (response.status === 429) {
-      if (retries > 0) {
-        await new Promise(res => setTimeout(res, 2000));
-        return fetchWithRetry(url, retries - 1);
-      }
-      throw new Error('API rate limit exceeded');
+        console.warn('Rate limited - waiting 60 seconds before retry');
+        await new Promise(resolve => setTimeout(resolve, 60000));
+        return fetchWithRetry(url, config, retries - 1);
     }
-    
     return response;
-  } catch (error) {
-    if (retries > 0) {
-      await new Promise(res => setTimeout(res, 1000));
-      return fetchWithRetry(url, retries - 1);
+  } catch (error: any) {
+    if (error.response?.status === 429) {
+        console.warn('Rate limited - waiting 60 seconds before retry');
+        await new Promise(resolve => setTimeout(resolve, 60000));
+        return fetchWithRetry(url, config, retries - 1);
     }
-    throw error;
+    if (retries <= 0) throw error;
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    return fetchWithRetry(url, config, retries - 1);
   }
 };
 
@@ -40,42 +39,52 @@ const fetchWithRetry = async (url: string, retries = 3) => {
  * @returns {Promise<Cryptocurrency[]>}
  */
 export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
-  try {
-    const url = `${API_BASE}/coins/markets?${new URLSearchParams({
-      vs_currency: 'usd',
-      order: 'created_desc',
-      per_page: '100',
-      sparkline: 'true',
-      price_change_percentage: '24h'
-    })}`;
+    try {
+        const response = await fetchWithRetry(`${API_BASE}/api/cmc-proxy`, {
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            params: {
+                endpoint: 'cryptocurrency/listings/latest',
+                start: '1',
+                limit: '100',
+                convert: 'USD'
+            }
+        });
+        
+        console.log('API Response Data:', response.data); // DEBUG LOG
+        
+        const data = response.data.data;
 
-    const response = await fetchWithRetry(url);
+        if (response.status === 429) {
+          throw new Error('API rate limit exceeded - try again later');
+        }
 
-    if (!response.data || !Array.isArray(response.data)) {
-      throw new Error('Invalid response format: expected an array');
+        if (!data || !Array.isArray(data)) {
+          console.error('Invalid API response structure:', response.data);
+          throw new Error('Invalid cryptocurrency data format');
+        }
+
+        return data.map((coin: any) => {
+          const addedDate = new Date(coin.date_added);
+          const now = new Date();
+          const ageHours = (now.getTime() - addedDate.getTime()) / (1000 * 60 * 60);
+          
+          return {
+            id: coin.id.toString(),
+            name: coin.name,
+            symbol: coin.symbol,
+            price: coin.quote.USD.price,
+            current_price: coin.quote.USD.price, // Add this for the store filter
+            age_hours: ageHours, // Add this for the store filter
+            volume_24h: coin.quote.USD.volume_24h,
+            market_cap: coin.quote.USD.market_cap, // Add market cap for high value filter
+            date_added: coin.date_added
+          };
+        });
+    } catch (error) {
+        console.error('Error fetching cryptocurrencies:', error);
+        throw error;
     }
-
-    // Process and transform the data
-    const tokens = response.data.map((token: any) => ({
-      id: token.id,
-      symbol: token.symbol,
-      name: token.name,
-      image: token.image,
-      current_price: token.current_price,
-      market_cap: token.market_cap,
-      total_volume: token.total_volume,
-      high_24h: token.high_24h,
-      low_24h: token.low_24h,
-      price_change_percentage_24h: token.price_change_percentage_24h,
-      market_cap_change_percentage_24h: token.market_cap_change_percentage_24h,
-      age_hours: differenceInHours(new Date(), parseISO(token.created_at || new Date().toISOString())),
-      price_history: token.sparkline_in_7d?.price || [],
-      meets_threshold: token.market_cap > 1500000 || token.total_volume > 1500000
-    }));
-
-    return tokens;
-  } catch (error) {
-    console.error('Failed to fetch cryptocurrencies after retries:', error);
-    throw error;
-  }
 };

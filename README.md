@@ -12,7 +12,7 @@ Automated Trading Guru for New Cryptocurrencies
 
 ## Features
 
-- **Live Cryptocurrency Monitoring**: Fetches and displays new coins from CoinGecko, highlighting those with high market cap or trading volume.
+- **Live Cryptocurrency Monitoring**: Fetches and displays new coins from CoinMarketCap, highlighting those with high market cap or trading volume.
 - **Automated Trading**: Auto-trading mode monitors for high-value opportunities and executes trades based on configurable rules (e.g., sell after 3 consecutive price drops).
 - **Manual Trading**: Buy and sell cryptocurrencies manually, with support for both paper (simulated) and live trading.
 - **Portfolio Management**: Track your holdings, average buy price, profit/loss, and visualize price history.

@@ -16,7 +16,19 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    
+    /* Type definitions */
+    "types": [
+      "./node_modules/@types/node",
+      "./node_modules/@types/babel__core",
+      "./node_modules/@types/babel__generator",
+      "./node_modules/@types/babel__template",
+      "./node_modules/@types/babel__traverse",
+      "./node_modules/@types/estree",
+      "./node_modules/@types/json-schema",
+      "./node_modules/@types/prop-types"
+    ]
   },
   "include": ["vite.config.ts"]
 }
