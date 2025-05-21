@@ -12,19 +12,157 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
   highValueCryptos: [],
   loading: false,
   error: null,
-  updateInterval: 2,
+  autoRefresh: true,
+  isLiveTrading: false,
   isAutoTrading: false,
   monitoredCrypto: null,
+  tradingStats: {
+    totalProfit: 0,
+    successfulTrades: 0,
+    failedTrades: 0,
+    averageProfit: 0,
+    largestGain: 0,
+    largestLoss: 0,
+    lastTradeProfit: 0,
+  },
+  focusedMonitoring: false,
   trades: [],
   portfolio: [],
-  isLiveTrading: false,
+  updateInterval: 30,
   isPaused: false,
 
-  fetchCryptos: async () => {
-    const { isPaused } = get();
-    if (isPaused) return;
+  toggleFocusedMonitoring: () => {
+    const { focusedMonitoring } = get();
+    set({ focusedMonitoring: !focusedMonitoring });
+    toast.success(focusedMonitoring ? 
+      'Resumed scanning for new coins' : 
+      'Now focusing on monitoring portfolio coins');
+  },
+  
+  getTradingStats: () => {
+    return get().tradingStats;
+  },
 
+  fetchCryptos: async () => {
     try {
+      const { focusedMonitoring, monitoredCrypto, autoRefresh } = get();
+      
+      // If we're in focused monitoring mode and have a monitored crypto,
+      // only fetch data for that specific crypto
+      if (focusedMonitoring && monitoredCrypto && autoRefresh) {
+        set({ loading: true, error: null });
+        
+        console.log(`🔍 Focused monitoring enabled for ${monitoredCrypto.name}...`);
+        
+        // Only fetch the monitored coin to reduce API calls
+        const singleCoin = await fetchNewCryptocurrencies(monitoredCrypto.id);
+        if (!singleCoin) throw new Error(`Failed to fetch data for ${monitoredCrypto.name}`);
+        
+        // Update just this coin's price history
+        const { highValueCryptos } = get();
+        const updatedHighValueCryptos = [...highValueCryptos];
+        
+        const existingIndex = updatedHighValueCryptos.findIndex(c => c.id === singleCoin.id);
+        if (existingIndex >= 0) {
+          const existingCrypto = updatedHighValueCryptos[existingIndex];
+          const priceHistory = [...(existingCrypto.price_history || []), singleCoin.current_price];
+          
+          if (priceHistory.length > 24) {
+            priceHistory.shift();
+          }
+          
+          // Count consecutive decreases
+          let consecutiveDecreases = 0;
+          if (priceHistory.length >= 2) {
+            for (let i = priceHistory.length - 1; i > 0; i--) {
+              if (priceHistory[i] < priceHistory[i-1]) {
+                consecutiveDecreases++;
+              } else {
+                break;
+              }
+            }
+          }
+          
+          updatedHighValueCryptos[existingIndex] = {
+            ...singleCoin,
+            price_history: priceHistory,
+            consecutive_decreases: consecutiveDecreases
+          };
+          
+          // Update portfolio prices just for this coin
+          const { portfolio } = get();
+          const updatedPortfolio = portfolio.map(position => {
+            if (position.id === singleCoin.id) {
+              const updatedPrice = singleCoin.current_price;
+              const profitLoss = (updatedPrice - position.averageBuyPrice) * position.balance;
+              const profitLossPercentage = ((updatedPrice / position.averageBuyPrice) - 1) * 100;
+              
+              console.log(`📊 ${position.name} price: $${updatedPrice.toFixed(6)} | P/L: ${profitLoss >= 0 ? '+' : ''}$${profitLoss.toFixed(6)} (${profitLossPercentage >= 0 ? '+' : ''}${profitLossPercentage.toFixed(2)}%)`);
+              console.log(`📉 Consecutive decreases: ${consecutiveDecreases}`);
+              
+              return {
+                ...position,
+                currentPrice: updatedPrice,
+                profitLoss: profitLoss,
+                profitLossPercentage: profitLossPercentage
+              };
+            }
+            return position;
+          });
+          
+          set({
+            highValueCryptos: updatedHighValueCryptos,
+            portfolio: updatedPortfolio,
+            loading: false
+          });
+          
+          // Check if we should sell
+          if (updatedHighValueCryptos[existingIndex].consecutive_decreases >= 3) {
+            const position = updatedPortfolio.find(p => p.id === singleCoin.id);
+            if (position) {
+              const profit = (singleCoin.current_price - position.averageBuyPrice) * position.balance;
+              const profitPercent = ((singleCoin.current_price / position.averageBuyPrice) - 1) * 100;
+              
+              // Update trading stats
+              const stats = get().tradingStats;
+              const newStats = {
+                totalProfit: stats.totalProfit + profit,
+                successfulTrades: profit >= 0 ? stats.successfulTrades + 1 : stats.successfulTrades,
+                failedTrades: profit < 0 ? stats.failedTrades + 1 : stats.failedTrades,
+                averageProfit: (stats.totalProfit + profit) / (stats.successfulTrades + stats.failedTrades + 1),
+                largestGain: profit > stats.largestGain ? profit : stats.largestGain,
+                largestLoss: profit < 0 && profit < stats.largestLoss ? profit : stats.largestLoss,
+                lastTradeProfit: profit
+              };
+              
+              // Sell after 3 consecutive decreases
+              get().sellManual(singleCoin, 1, 'bitvavo');
+              set({ 
+                monitoredCrypto: null,
+                focusedMonitoring: false,
+                tradingStats: newStats 
+              });
+              
+              // Show detailed profit information
+              if (profit >= 0) {
+                toast.success(
+                  `💰 Profit! Auto-sold ${singleCoin.name} for +$${profit.toFixed(6)} (+${profitPercent.toFixed(2)}%)\n` +
+                  `Total profit so far: $${newStats.totalProfit.toFixed(6)}`
+                );
+              } else {
+                toast.error(
+                  `📉 Loss! Auto-sold ${singleCoin.name} for ${profit.toFixed(6)} (${profitPercent.toFixed(2)}%)\n` +
+                  `Total profit so far: $${newStats.totalProfit.toFixed(6)}`
+                );
+              }
+            }
+          }
+          
+          return; // Exit early, we've done our focused update
+        }
+      }
+      
+      // Normal full update if not in focused mode
       set({ loading: true, error: null });
       const data = await fetchNewCryptocurrencies();
       
@@ -113,19 +251,51 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
       
       // Fix TypeScript errors by ensuring nullish coalescing for optional properties
       // Log summary of found coins
-      console.log(`✅ Found ${newCryptos.length} new coins added in the last 24 hours`);
-      console.log(`✅ ${highValueCryptos.length} of these are high-value new coins`);
+      console.log(` Found ${newCryptos.length} new coins added in the last 24 hours`);
+      console.log(` ${highValueCryptos.length} of these are high-value new coins`);
+      
+      // Update portfolio current prices and profit/loss calculations
+      const { portfolio } = get();
+      const updatedPortfolio = portfolio.map(position => {
+        // Find matching crypto in the new data
+        const latestData = allCryptos.find(c => c.id === position.id);
+        
+        if (latestData) {
+          // Get the updated price safely
+          const updatedPrice = (latestData as any).price ?? (latestData as any).current_price ?? position.currentPrice;
+          
+          // Calculate new profit/loss values
+          const profitLoss = (updatedPrice - position.averageBuyPrice) * position.balance;
+          const profitLossPercentage = ((updatedPrice / position.averageBuyPrice) - 1) * 100;
+          
+          // Log significant price changes
+          if (Math.abs(updatedPrice - position.currentPrice) / position.currentPrice > 0.01) {
+            console.log(` ${position.name} price updated: $${position.currentPrice.toFixed(6)} -> $${updatedPrice.toFixed(6)} (${profitLossPercentage > 0 ? '+' : ''}${profitLossPercentage.toFixed(2)}%)`);
+          }
+          
+          return {
+            ...position,
+            currentPrice: updatedPrice,
+            profitLoss: profitLoss,
+            profitLossPercentage: profitLossPercentage
+          };
+        }
+        
+        return position;
+      });
       
       set({
         cryptos: allCryptos,         // Store ALL coins in the cryptos array
         newCryptos: newCryptos,      // Only new coins (< 24h old) in newCryptos
         highValueCryptos: updatedHighValueCryptos,
+        portfolio: updatedPortfolio, // Update portfolio with new prices
         loading: false,
         error: null
       });
       
       // Check for auto-trading conditions
-      const { isAutoTrading, monitoredCrypto } = get();
+      const { isAutoTrading } = get();
+      // We already have monitoredCrypto from earlier destructuring
       if (isAutoTrading) {
         if (!monitoredCrypto) {
           // Find a crypto that meets our threshold but hasn't been monitored yet
@@ -134,18 +304,65 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
           );
           
           if (candidateCrypto) {
-            set({ monitoredCrypto: candidateCrypto });
             // Auto-buy the crypto
             get().buyManual(candidateCrypto, 1, 'bitvavo');
+            
+            // Switch to focused monitoring mode
+            set({ 
+              monitoredCrypto: candidateCrypto,
+              focusedMonitoring: true 
+            });
+            
+            toast.success(`🔍 Now focusing on monitoring ${candidateCrypto.name}`);
           }
         } else {
           // Check if we should sell
           const updatedMonitoredCrypto = updatedHighValueCryptos.find(c => c.id === monitoredCrypto.id);
           if (updatedMonitoredCrypto?.consecutive_decreases && updatedMonitoredCrypto.consecutive_decreases >= 3) {
-            // Sell after 3 consecutive decreases
-            get().sellManual(updatedMonitoredCrypto, 1, 'bitvavo');
-            set({ monitoredCrypto: null });
-            toast.success(`Auto-sold ${updatedMonitoredCrypto.name} after detecting 3 consecutive price drops`);
+            // Get purchase price from portfolio for profit calculation
+            const position = get().portfolio.find(p => p.id === updatedMonitoredCrypto.id);
+            if (position) {
+              const profit = (updatedMonitoredCrypto.current_price - position.averageBuyPrice) * position.balance;
+              const profitPercent = ((updatedMonitoredCrypto.current_price / position.averageBuyPrice) - 1) * 100;
+              
+              // Update trading stats
+              const stats = get().tradingStats;
+              const newStats = {
+                totalProfit: stats.totalProfit + profit,
+                successfulTrades: profit >= 0 ? stats.successfulTrades + 1 : stats.successfulTrades,
+                failedTrades: profit < 0 ? stats.failedTrades + 1 : stats.failedTrades,
+                averageProfit: (stats.totalProfit + profit) / (stats.successfulTrades + stats.failedTrades + 1),
+                largestGain: profit > stats.largestGain ? profit : stats.largestGain,
+                largestLoss: profit < 0 && profit < stats.largestLoss ? profit : stats.largestLoss,
+                lastTradeProfit: profit
+              };
+              
+              // Sell after 3 consecutive decreases
+              get().sellManual(updatedMonitoredCrypto, 1, 'bitvavo');
+              set({ 
+                monitoredCrypto: null,
+                focusedMonitoring: false,
+                tradingStats: newStats 
+              });
+              
+              // Show detailed profit information
+              if (profit >= 0) {
+                toast.success(
+                  `💰 Profit! Auto-sold ${updatedMonitoredCrypto.name} for +$${profit.toFixed(6)} (+${profitPercent.toFixed(2)}%)\n` +
+                  `Total profit so far: $${newStats.totalProfit.toFixed(6)}`
+                );
+              } else {
+                toast.error(
+                  `📉 Loss! Auto-sold ${updatedMonitoredCrypto.name} for ${profit.toFixed(6)} (${profitPercent.toFixed(2)}%)\n` +
+                  `Total profit so far: $${newStats.totalProfit.toFixed(6)}`
+                );
+              }
+            } else {
+              // Shouldn't happen but handle just in case
+              get().sellManual(updatedMonitoredCrypto, 1, 'bitvavo');
+              set({ monitoredCrypto: null, focusedMonitoring: false });
+              toast.error(`Auto-sold ${updatedMonitoredCrypto.name} after detecting 3 consecutive price drops`);
+            }
           }
         }
       }
@@ -162,15 +379,16 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
   },
 
   toggleAutoTrading: () => {
-    set((state) => ({ 
-      isAutoTrading: !state.isAutoTrading,
-      monitoredCrypto: !state.isAutoTrading ? null : state.monitoredCrypto 
-    }));
-    
     const { isAutoTrading } = get();
-    if (isAutoTrading) {
-      toast.success("Auto-trading activated! Monitoring for high-value opportunities.");
+    const newStatus = !isAutoTrading;
+    set({ isAutoTrading: newStatus });
+    
+    // If turning off auto-trading, also disable focused monitoring
+    if (!newStatus) {
+      set({ focusedMonitoring: false });
+      toast.success('Auto-trading disabled, resuming normal scanning');
     } else {
+      toast.success('Auto-trading enabled, will buy promising new coins');
       toast.success("Auto-trading deactivated. Manual trading still available.");
     }
   },

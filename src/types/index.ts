@@ -38,6 +38,47 @@ export interface Cryptocurrency {
   };
 }
 
+export interface TradingStats {
+  totalProfit: number;
+  successfulTrades: number;
+  failedTrades: number;
+  averageProfit: number;
+  largestGain: number;
+  largestLoss: number;
+  lastTradeProfit: number;
+}
+
+export interface CryptoState {
+  // State properties
+  cryptos: Cryptocurrency[];
+  newCryptos: Cryptocurrency[];
+  highValueCryptos: Cryptocurrency[];
+  loading: boolean;
+  error: null | string;
+  updateInterval: number;
+  autoRefresh?: boolean;
+  isLiveTrading: boolean;
+  isAutoTrading: boolean;
+  monitoredCrypto: Cryptocurrency | null;
+  trades: Trade[];
+  portfolio: TradeableCrypto[];
+  tradingStats: TradingStats;
+  focusedMonitoring: boolean;
+  isPaused?: boolean;
+  
+  // Actions
+  fetchCryptos: () => Promise<void>;
+  toggleAutoTrading: () => void;
+  toggleFocusedMonitoring: () => void;
+  getTradingStats: () => TradingStats;
+  setMonitoredCrypto?: (crypto: Cryptocurrency | null) => void;
+  setUpdateInterval?: (interval: number) => void;
+  toggleLiveTrading?: () => void;
+  togglePause?: () => void;
+  buyManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => Trade;
+  sellManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => Trade | null;
+}
+
 export interface TradeSignal {
   type: 'buy' | 'sell';
   price: number;
@@ -74,28 +115,7 @@ export interface AppState {
   toggleDarkMode: () => void;
 }
 
-export interface CryptoState {
-  cryptos: Cryptocurrency[];
-  newCryptos: Cryptocurrency[];
-  highValueCryptos: Cryptocurrency[];
-  loading: boolean;
-  error: string | null;
-  updateInterval: number;
-  isAutoTrading: boolean;
-  monitoredCrypto: Cryptocurrency | null;
-  trades: Trade[];
-  portfolio: TradeableCrypto[];
-  isLiveTrading: boolean;
-  isPaused: boolean;
-  fetchCryptos: () => Promise<void>;
-  toggleAutoTrading: () => void;
-  setMonitoredCrypto: (crypto: Cryptocurrency | null) => void;
-  setUpdateInterval: (interval: number) => void;
-  toggleLiveTrading: () => void;
-  togglePause: () => void;
-  buyManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => void;
-  sellManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => void;
-}
+// This interface was removed to avoid duplication with the CryptoState interface above
 
 export interface ExchangeState {
   exchanges: {
