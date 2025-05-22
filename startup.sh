@@ -18,18 +18,14 @@ pip install -r api/requirements.txt
 echo "Installing Node.js dependencies..."
 cd src && npm install && cd ..
 
-# Start Redis (uncomment if using Redis)
-# echo "Starting Redis..."
-# sudo systemctl start redis-server
-
 # Start Flask backend with Gunicorn with proper process management
 echo "Starting Gunicorn server..."
 cd api
 # Stop any existing gunicorn process
 pkill -f "gunicorn.*5001" || true
 sleep 1
-# Start new process with PID file
-gunicorn -w 4 -b 127.0.0.1:5001 server:app --pid /tmp/gunicorn.pid --access-logfile /tmp/gunicorn.access.log --error-logfile /tmp/gunicorn.error.log &
+# Start new process with PID file - binding to 0.0.0.0 to allow external connections
+gunicorn -w 4 -b 0.0.0.0:5001 server:app --pid /tmp/gunicorn.pid --access-logfile /tmp/gunicorn.access.log --error-logfile /tmp/gunicorn.error.log &
 cd ..
 
 # Start Vite frontend with PM2
@@ -48,7 +44,21 @@ pm2 status
 echo "Gunicorn processes:"
 pgrep -fl "gunicorn.*5001" || echo "No Gunicorn processes found"
 
-# Verify Flask server is running
-sleep 2
+# Verify Flask server is running and accessible
 echo "Verifying Flask server..."
-curl -s http://localhost:5001/api/new-cryptos >/dev/null && echo "Flask server is running" || echo "Flask server failed to start"
+max_retries=5
+retry_count=0
+while [ $retry_count -lt $max_retries ]; do
+    if curl -s http://localhost:5001/api/health >/dev/null; then
+        echo "Flask server is running and accessible"
+        break
+    else
+        echo "Waiting for Flask server to become available..."
+        sleep 2
+        retry_count=$((retry_count + 1))
+    fi
+done
+
+if [ $retry_count -eq $max_retries ]; then
+    echo "WARNING: Flask server could not be verified after $max_retries attempts"
+fi

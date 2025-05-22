@@ -7,11 +7,14 @@ from flask_limiter.util import get_remote_address
 from flask_caching import Cache
 
 app = Flask(__name__)
+# Update CORS to be more permissive for development
 CORS(app, resources={
     r"/api/*": {
-        "origins": "*",
+        "origins": ["http://localhost:5173", "https://localhost:5173", "*"],
         "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
+        "allow_headers": ["Content-Type", "Authorization"],
+        "expose_headers": ["Content-Type"],
+        "supports_credentials": True
     }
 })
 
@@ -28,10 +31,13 @@ API_KEY = '1758e18b-1744-4ad6-a2a9-908af2f33c8a'
 
 @app.route("/api/new-cryptos")
 def new_cryptos():
-    coins = get_recent_cryptos()
-    response = jsonify(coins)
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    return response
+    try:
+        coins = get_recent_cryptos()
+        response = jsonify(coins)
+        return response
+    except Exception as e:
+        print(f"Error in new_cryptos: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/cmc-proxy', methods=['GET'])
 @cache.cached(timeout=60, query_string=True)
@@ -57,6 +63,10 @@ def cmc_proxy():
     except requests.exceptions.RequestException as e:
         print(f"Proxy error: {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/health')
+def health_check():
+    return jsonify({"status": "healthy"}), 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True)

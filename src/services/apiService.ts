@@ -1,6 +1,7 @@
 import axios, { AxiosRequestConfig } from 'axios';
 
-const API_BASE = import.meta.env.DEV && !window.location.hostname.includes('bolt.new')
+// Ensure API_BASE is always set for development
+const API_BASE = import.meta.env.DEV 
     ? 'http://localhost:5001' 
     : '';
 
@@ -19,13 +20,24 @@ interface Cryptocurrency {
 
 const fetchWithRetry = async (url: string, config?: AxiosRequestConfig, retries = 3) => {
   try {
+    // Add health check before making the actual request
+    if (import.meta.env.DEV) {
+      try {
+        await axios.get(`${API_BASE}/api/health`);
+      } catch (error) {
+        console.error('Backend server is not responding to health check');
+        throw new Error('Backend server is not available');
+      }
+    }
+
     const response = await axios.get(url, {
       ...config,
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
         ...config?.headers
-      }
+      },
+      timeout: 10000 // 10 second timeout
     });
     
     if (response.status === 429) {
@@ -35,13 +47,19 @@ const fetchWithRetry = async (url: string, config?: AxiosRequestConfig, retries 
     }
     return response;
   } catch (error: any) {
+    console.error('Network request failed:', error.message);
+    
     if (error.response?.status === 429) {
         console.warn('Rate limited - waiting 60 seconds before retry');
         await new Promise(resolve => setTimeout(resolve, 60000));
         return fetchWithRetry(url, config, retries - 1);
     }
+    
     if (retries <= 0) throw error;
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const delay = 1000 * (4 - retries); // Exponential backoff
+    console.log(`Retrying in ${delay/1000} seconds...`);
+    await new Promise(resolve => setTimeout(resolve, delay));
     return fetchWithRetry(url, config, retries - 1);
   }
 };
