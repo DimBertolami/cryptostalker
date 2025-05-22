@@ -7,10 +7,10 @@ from flask_limiter.util import get_remote_address
 from flask_caching import Cache
 
 app = Flask(__name__)
-# Update CORS to be more permissive for development
+# Update CORS to be more specific and secure
 CORS(app, resources={
     r"/api/*": {
-        "origins": ["http://localhost:5173", "https://localhost:5173", "*"],
+        "origins": ["http://localhost:5173", "https://localhost:5173"],
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
         "expose_headers": ["Content-Type"],

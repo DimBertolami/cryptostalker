@@ -1,9 +1,7 @@
 import axios, { AxiosRequestConfig } from 'axios';
 
 // Ensure API_BASE is always set for development
-const API_BASE = import.meta.env.DEV 
-    ? 'http://localhost:5001' 
-    : '';
+const API_BASE = 'http://localhost:5001';
 
 interface Cryptocurrency {
     id: string;
@@ -21,13 +19,11 @@ interface Cryptocurrency {
 const fetchWithRetry = async (url: string, config?: AxiosRequestConfig, retries = 3) => {
   try {
     // Add health check before making the actual request
-    if (import.meta.env.DEV) {
-      try {
-        await axios.get(`${API_BASE}/api/health`);
-      } catch (error) {
-        console.error('Backend server is not responding to health check');
-        throw new Error('Backend server is not available');
-      }
+    try {
+      await axios.get(`${API_BASE}/api/health`, { timeout: 5000 });
+    } catch (error) {
+      console.error('Backend server is not responding to health check');
+      throw new Error('Backend server is not available');
     }
 
     const response = await axios.get(url, {

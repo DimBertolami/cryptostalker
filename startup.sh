@@ -8,9 +8,6 @@ if lsof -i :5001; then
     sleep 2  # Give time for the port to be released
 fi
 
-# Navigate to project directory
-cd /home/dim/Downloads/cryptostalker
-
 # Install dependencies
 echo "Installing Python dependencies..."
 pip install -r api/requirements.txt
@@ -18,35 +15,25 @@ pip install -r api/requirements.txt
 echo "Installing Node.js dependencies..."
 cd src && npm install && cd ..
 
-# Start Flask backend with Gunicorn with proper process management
+# Start Flask backend with Gunicorn
 echo "Starting Gunicorn server..."
 cd api
 # Stop any existing gunicorn process
 pkill -f "gunicorn.*5001" || true
 sleep 1
 # Start new process with PID file - binding to 0.0.0.0 to allow external connections
-gunicorn -w 4 -b 0.0.0.0:5001 server:app --pid /tmp/gunicorn.pid --access-logfile /tmp/gunicorn.access.log --error-logfile /tmp/gunicorn.error.log &
+gunicorn -w 4 -b 0.0.0.0:5001 server:app --pid /tmp/gunicorn.pid --access-logfile /tmp/gunicorn.access.log --error-logfile /tmp/gunicorn.error.log --timeout 120 &
 cd ..
 
-# Start Vite frontend with PM2
-echo "Starting PM2 process for Vite..."
-cd src 
-pm2 delete cryptostalker-frontend 2>/dev/null || true
-pm2 start npm --name "cryptostalker-frontend" -- run dev
+# Start Vite frontend
+echo "Starting Vite frontend..."
+cd src
+npm run dev &
 cd ..
-
-# Save PM2 process list
-pm2 save
-
-# Display status
-echo "Current server status:"
-pm2 status
-echo "Gunicorn processes:"
-pgrep -fl "gunicorn.*5001" || echo "No Gunicorn processes found"
 
 # Verify Flask server is running and accessible
 echo "Verifying Flask server..."
-max_retries=5
+max_retries=10
 retry_count=0
 while [ $retry_count -lt $max_retries ]; do
     if curl -s http://localhost:5001/api/health >/dev/null; then
