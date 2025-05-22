@@ -2,7 +2,7 @@ import axios, { AxiosRequestConfig } from 'axios';
 
 const API_BASE = import.meta.env.DEV && !window.location.hostname.includes('bolt.new')
     ? 'http://localhost:5001' 
-    : '/api';
+    : '';
 
 interface Cryptocurrency {
     id: string;
@@ -19,7 +19,15 @@ interface Cryptocurrency {
 
 const fetchWithRetry = async (url: string, config?: AxiosRequestConfig, retries = 3) => {
   try {
-    const response = await axios.get(url, config);
+    const response = await axios.get(url, {
+      ...config,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        ...config?.headers
+      }
+    });
+    
     if (response.status === 429) {
         console.warn('Rate limited - waiting 60 seconds before retry');
         await new Promise(resolve => setTimeout(resolve, 60000));
@@ -44,11 +52,7 @@ const fetchWithRetry = async (url: string, config?: AxiosRequestConfig, retries 
  */
 export const fetchCryptoById = async (cryptoId: string): Promise<Cryptocurrency | null> => {
     try {
-        const response = await fetchWithRetry(`${API_BASE}/cmc-proxy`, {
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            },
+        const response = await fetchWithRetry(`${API_BASE}/api/cmc-proxy`, {
             params: {
                 endpoint: 'cryptocurrency/quotes/latest',
                 id: cryptoId,
@@ -96,12 +100,7 @@ export const fetchCryptoById = async (cryptoId: string): Promise<Cryptocurrency 
 
 export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
     try {
-        const response = await fetchWithRetry(`${API_BASE}/new-cryptos`, {
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            }
-        });
+        const response = await fetchWithRetry(`${API_BASE}/api/new-cryptos`);
         
         if (!response.data || !Array.isArray(response.data)) {
             console.error('Invalid API response structure:', response.data);

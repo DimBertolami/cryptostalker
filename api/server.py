@@ -6,27 +6,21 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
 
-# First create the Flask app
 app = Flask(__name__)
-CORS(app) 
-# CORS(app, resources={
-#     r"/api/*": {
-#         "origins": ["http://localhost:4173", "http://localhost:5001", "http://localhost:5173"],
-#         "methods": ["GET", "POST", "OPTIONS"],
-#         "allow_headers": ["Content-Type", "Authorization"],
-#         "supports_credentials": True
-#     }
-# })  # Allow requests from frontend
+CORS(app, resources={
+    r"/api/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
-# Then initialize extensions
 cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache'})
 
-# Change the limiter configuration to:
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
     storage_uri="memory://",
-    # 
 )
 
 COINMARKETCAP_API = 'https://pro-api.coinmarketcap.com/v1/'
@@ -35,11 +29,12 @@ API_KEY = '1758e18b-1744-4ad6-a2a9-908af2f33c8a'
 @app.route("/api/new-cryptos")
 def new_cryptos():
     coins = get_recent_cryptos()
-    return jsonify(coins)
+    response = jsonify(coins)
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
 
 @app.route('/api/cmc-proxy', methods=['GET'])
-# @limiter.limit("5 per minute")  # 5 requests per minute max
-@cache.cached(timeout=60, query_string=True)  # Cache for 60 seconds
+@cache.cached(timeout=60, query_string=True)
 def cmc_proxy():
     endpoint = request.args.get('endpoint')
     print(f"Received proxy request for endpoint: {endpoint}")
@@ -64,5 +59,4 @@ def cmc_proxy():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    # In server.py, modify the app.run() at the bottom
     app.run(host='0.0.0.0', port=5001, debug=True)
