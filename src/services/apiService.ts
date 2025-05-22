@@ -1,8 +1,8 @@
 import axios, { AxiosRequestConfig } from 'axios';
 
-const API_BASE = import.meta.env.DEV 
+const API_BASE = import.meta.env.DEV && !window.location.hostname.includes('bolt.new')
     ? 'http://localhost:5001' 
-    : window.location.origin;
+    : '/api';
 
 interface Cryptocurrency {
     id: string;
@@ -44,7 +44,7 @@ const fetchWithRetry = async (url: string, config?: AxiosRequestConfig, retries 
  */
 export const fetchCryptoById = async (cryptoId: string): Promise<Cryptocurrency | null> => {
     try {
-        const response = await fetchWithRetry(`${API_BASE}/api/cmc-proxy`, {
+        const response = await fetchWithRetry(`${API_BASE}/cmc-proxy`, {
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
@@ -96,50 +96,35 @@ export const fetchCryptoById = async (cryptoId: string): Promise<Cryptocurrency 
 
 export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
     try {
-        const response = await fetchWithRetry(`${API_BASE}/api/cmc-proxy`, {
+        const response = await fetchWithRetry(`${API_BASE}/new-cryptos`, {
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
-            },
-            params: {
-                endpoint: 'cryptocurrency/listings/latest',
-                start: '1',
-                limit: '5000', // Increased to maximum supported by CoinMarketCap
-                convert: 'USD'
             }
         });
         
-        // Reduce console logging - just show API was successful
-        console.log(`API fetched ${response.data.data.length} coins successfully from CoinMarketCap`);
-        
-        const data = response.data.data;
-
-        if (response.status === 429) {
-          throw new Error('API rate limit exceeded - try again later');
+        if (!response.data || !Array.isArray(response.data)) {
+            console.error('Invalid API response structure:', response.data);
+            throw new Error('Invalid cryptocurrency data format');
         }
 
-        if (!data || !Array.isArray(data)) {
-          console.error('Invalid API response structure:', response.data);
-          throw new Error('Invalid cryptocurrency data format');
-        }
-
-        return data.map((coin: any) => {
-          const addedDate = new Date(coin.date_added);
-          const now = new Date();
-          const ageHours = (now.getTime() - addedDate.getTime()) / (1000 * 60 * 60);
-          
-          return {
-            id: coin.id.toString(),
-            name: coin.name,
-            symbol: coin.symbol,
-            price: coin.quote.USD.price,
-            current_price: coin.quote.USD.price, // Add this for the store filter
-            age_hours: ageHours, // Add this for the store filter
-            volume_24h: coin.quote.USD.volume_24h,
-            market_cap: coin.quote.USD.market_cap, // Add market cap for high value filter
-            price_change_percentage_24h: coin.quote.USD.percent_change_24h, // Add 24h change percentage
-            date_added: coin.date_added
-          };
+        return response.data.map((coin: any) => {
+            const addedDate = new Date(coin.date_added);
+            const now = new Date();
+            const ageHours = (now.getTime() - addedDate.getTime()) / (1000 * 60 * 60);
+            
+            return {
+                id: coin.id.toString(),
+                name: coin.name,
+                symbol: coin.symbol,
+                price: coin.price || coin.current_price,
+                current_price: coin.current_price || coin.price,
+                age_hours: ageHours,
+                volume_24h: coin.volume_24h,
+                market_cap: coin.market_cap,
+                price_change_percentage_24h: coin.price_change_percentage_24h,
+                date_added: coin.date_added
+            };
         });
     } catch (error) {
         console.error('Error fetching cryptocurrencies:', error);
