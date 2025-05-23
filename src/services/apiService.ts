@@ -1,8 +1,10 @@
 import axios, { AxiosRequestConfig } from 'axios';
 
-const API_BASE = import.meta.env.DEV 
-    ? 'http://localhost:5001' 
-    : window.location.origin;
+// const API_BASE = import.meta.env.DEV 
+//     ? 'http://localhost:5001' 
+//     : window.location.origin;
+// In your API service file
+const API_BASE_URL = 'http://localhost:5001/api';
 
 interface Cryptocurrency {
     id: string;
@@ -44,7 +46,7 @@ const fetchWithRetry = async (url: string, config?: AxiosRequestConfig, retries 
  */
 export const fetchCryptoById = async (cryptoId: string): Promise<Cryptocurrency | null> => {
     try {
-        const response = await fetchWithRetry(`${API_BASE}/api/cmc-proxy`, {
+        const response = await fetchWithRetry(`${API_BASE_URL}/cmc-proxy`, {
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
@@ -96,7 +98,7 @@ export const fetchCryptoById = async (cryptoId: string): Promise<Cryptocurrency 
 
 export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
     try {
-        const response = await fetchWithRetry(`${API_BASE}/api/cmc-proxy`, {
+        const response = await fetchWithRetry(`${API_BASE_URL}/cmc-proxy`, {
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'

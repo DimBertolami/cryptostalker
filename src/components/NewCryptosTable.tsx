@@ -1,159 +1,242 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import useCryptoStore from '../store/useCryptoStore';
 import { Cryptocurrency } from '../types';
 import toast from 'react-hot-toast';
-
+import fetchCryptos from '../store/useCryptoStore';
 const NewCryptosTable: React.FC = () => {
   const { newCryptos, loading, isAutoTrading, buyManual } = useCryptoStore();
-  const [purchaseAmounts, setPurchaseAmounts] = useState<{[key: string]: number}>({});
+  const [sortColumn, setSortColumn] = useState<string>('age');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [purchaseAmounts, setPurchaseAmounts] = useState<{ [key: string]: string }>({});
+  const [ageFilter, setAgeFilter] = useState<string>('24h');
+  const [showAllCoins, setShowAllCoins] = useState(false);
+
+  useEffect(() => {
+    const loadData = async () => {
+      await fetchCryptos(showAllCoins);
+    };
+    loadData();
+  }, [showAllCoins, fetchCryptos]);
   
-  // Helper function to get the price from either the direct property or the quote object
-  const getPrice = (coin: Cryptocurrency) => {
-    return coin.quote?.USD?.price || coin.current_price || 0;
-  };
-  
-  // Helper function to get the 24h change from either the direct property or the quote object
-  const get24hChange = (coin: Cryptocurrency) => {
-    return coin.quote?.USD?.percent_change_24h || coin.price_change_percentage_24h || 0;
-  };
-  
-  // Helper function to get the market cap from either the direct property or the quote object
-  const getMarketCap = (coin: Cryptocurrency) => {
-    return coin.quote?.USD?.market_cap || coin.market_cap || 0;
+  // Update the name column header to toggle showAllCoins
+  const handleNameHeaderClick = () => {
+    setShowAllCoins(!showAllCoins);
+    // Reset other filters when showing all coins
+    setAgeFilter('all');
   };
 
-  // Helper function to get the trading volume
-  const getVolume = (coin: Cryptocurrency) => {
-    return coin.quote?.USD?.volume_24h || coin.volume_24h || 0;
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
   };
 
-  // Handle manual buy action
-  const handleBuy = (coin: Cryptocurrency) => {
-    const amount = purchaseAmounts[coin.id] || 1; // Default to 1 if not set
-    
+  const handleAmountChange = (id: string, value: string) => {
+    setPurchaseAmounts(prev => ({
+      ...prev,
+      [id]: value
+    }));
+  };
+
+  const handleBuy = async (coin: Cryptocurrency) => {
+    const amount = parseFloat(purchaseAmounts[coin.id] || '1');
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+  
     try {
-      buyManual(coin, amount, 'bitvavo');
-      toast.success(`Manually bought ${amount} ${coin.symbol?.toUpperCase()}`);
-      
-      // Reset the amount after purchase
-      const newPurchaseAmounts = {...purchaseAmounts};
-      delete newPurchaseAmounts[coin.id];
-      setPurchaseAmounts(newPurchaseAmounts);
-    } catch (error) {
-      toast.error(`Failed to buy: ${error}`);
-    }
-  };
-  
-  // Handle amount change
-  const handleAmountChange = (coinId: string, value: string) => {
-    const numValue = parseFloat(value);
-    if (!isNaN(numValue) && numValue > 0) {
-      setPurchaseAmounts({
-        ...purchaseAmounts,
-        [coinId]: numValue
+      // Pass the coin object as the first parameter and amount as the second
+      await buyManual(coin, amount, 'bitvavo'); // or 'binance' depending on your default
+      toast.success(`Successfully bought ${amount} ${coin.symbol}`);
+      // Clear the input after successful purchase
+      setPurchaseAmounts(prev => {
+        const newAmounts = { ...prev };
+        delete newAmounts[coin.id];
+        return newAmounts;
       });
+    } catch (error) {
+      console.error('Error buying coin:', error);
+      toast.error(`Failed to buy ${coin.symbol}`);
     }
   };
+
+  const getPrice = (coin: Cryptocurrency) => {
+    return coin.quote?.USD?.price || 0;
+  };
+
+  const get24hChange = (coin: Cryptocurrency) => {
+    return coin.quote?.USD?.percent_change_24h || 0;
+  };
+
+  const getMarketCap = (coin: Cryptocurrency) => {
+    return coin.quote?.USD?.market_cap || 0;
+  };
+
+  const getVolume = (coin: Cryptocurrency) => {
+    return coin.quote?.USD?.volume_24h || 0;
+  };
+
+  const getAgeInHours = (dateAdded: string) => {
+    const addedDate = new Date(dateAdded);
+    const now = new Date();
+    return (now.getTime() - addedDate.getTime()) / (1000 * 60 * 60);
+  };
+
+  // Filter and sort logic
+  const filteredCryptos = useMemo(() => {
+    if (!newCryptos) return [];
   
-  return (
-    <div className="p-4">
-      <h2 className="text-xl font-semibold text-white mb-4">Cryptocurrency List</h2>
+    return newCryptos.filter(coin => {
+      if (showAllCoins) return true; // Show all coins when showAllCoins is true
       
-      {loading ? (
-        <div className="text-center py-4">Loading...</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-700">
-            <thead className="bg-gray-800">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">#</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Price (USD)</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">24h %</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Market Cap</th>
-                {!isAutoTrading && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Action</th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="bg-gray-900 divide-y divide-gray-700">
-              {newCryptos.map((coin, idx) => {
-                const price = getPrice(coin);
-                const change24h = get24hChange(coin);
-                const marketCap = getMarketCap(coin);
-                const volume = getVolume(coin);
-                
-                // For logging: check why this coin was selected as high value
-                if (marketCap < 1000000 && volume > 500000) {
-                  console.log(`High value coin ${coin.name} qualified due to volume: $${(volume/1000000).toFixed(2)}M volume`);
-                }
-                
-                // Check if it's a high-value coin
-                const isHighValue = (marketCap > 1000000 || volume > 500000);
-                
-                return (
-                  <tr key={coin.id} className="hover:bg-gray-800">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                      {idx + 1}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10">
-                          <div className="h-10 w-10 rounded-full bg-gray-700 flex items-center justify-center">
-                            <span className="text-white">{coin.symbol?.slice(0, 3) || '---'}</span>
-                          </div>
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-white">{coin.name || 'Unknown'}</div>
-                          <div className="text-sm text-gray-400">{coin.symbol || '---'}</div>
-                        </div>
+      const ageHours = getAgeInHours(coin.date_added);
+      
+      // Apply age filter
+      switch(ageFilter) {
+        case '24h': return ageHours < 24;
+        case '48h': return ageHours < 48;
+        case '7d': return ageHours < 168;  // 7 days in hours
+        case '30d': return ageHours < 720; // 30 days in hours
+        default: return true;
+      }
+    });
+  }, [newCryptos, ageFilter, showAllCoins]);
+
+  if (loading) {
+    return <div className="text-center py-4">Loading...</div>;
+  }
+
+  return (
+    <div className="bg-gray-900 text-white p-4 rounded-lg shadow">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-700">
+          <thead className="bg-gray-800">
+            <tr>
+              <th className="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                Name
+              </th>
+              <th 
+                className="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSort('price')}
+              >
+                Price (USD) {sortColumn === 'price' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+              </th>
+              <th 
+                className="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSort('change24h')}
+              >
+                24h % {sortColumn === 'change24h' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+              </th>
+              <th 
+                className="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSort('marketCap')}
+              >
+                Market Cap {sortColumn === 'marketCap' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+              </th>
+              <th 
+                className="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSort('volume')}
+              >
+                Volume (24h) {sortColumn === 'volume' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+              </th>
+              <th 
+                className="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider"
+              >
+                <div className="flex items-center">
+                  <span 
+                    className="cursor-pointer"
+                    onClick={() => handleSort('age')}
+                  >
+                    Age {sortColumn === 'age' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+                  </span>
+                  <select
+                    className="ml-2 bg-gray-700 text-white text-xs border-0 rounded focus:ring-0"
+                    value={ageFilter}
+                    onChange={(e) => {
+                      setAgeFilter(e.target.value);
+                      setShowAllCoins(false); // Reset showAllCoins when changing age filter
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <option value="all">All</option>
+                    <option value="24h">{"< 24h"}</option>
+                    <option value="48h">{"< 48h"}</option>
+                    <option value="7d">{"< 7d"}</option>
+                    <option value="30d">{"< 30d"}</option>
+                  </select>
+                </div>
+              </th>
+              {!isAutoTrading && (
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                  Action
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody className="bg-gray-900 divide-y divide-gray-700">
+            {filteredCryptos.map((coin) => {
+              const price = getPrice(coin);
+              const change24h = get24hChange(coin);
+              const marketCap = getMarketCap(coin);
+              const volume = getVolume(coin);
+              const ageHours = getAgeInHours(coin.date_added);
+
+              return (
+                <tr key={coin.id} className="hover:bg-gray-800">
+                  <td className="px-3 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <div className="ml-4">
+                        <div className="text-sm font-medium text-white">{coin.name}</div>
+                        <div className="text-sm text-gray-400">{coin.symbol}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-4 whitespace-nowrap">
+                    <div className="text-sm text-white">${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}</div>
+                  </td>
+                  <td className={`px-3 py-4 whitespace-nowrap text-sm ${change24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
+                  </td>
+                  <td className="px-3 py-4 whitespace-nowrap text-sm text-white">
+                    ${(marketCap / 1000000).toFixed(2)}M
+                  </td>
+                  <td className="px-3 py-4 whitespace-nowrap text-sm text-white">
+                    ${(volume / 1000).toFixed(1)}K
+                  </td>
+                  <td className="px-3 py-4 whitespace-nowrap text-sm text-white">
+                    {ageHours.toFixed(1)}h
+                  </td>
+                  {!isAutoTrading && (
+                    <td className="px-3 py-4 whitespace-nowrap text-sm font-medium">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="number"
+                          className="w-20 px-2 py-1 text-sm bg-gray-700 border border-gray-600 rounded text-white"
+                          min="0.1"
+                          step="0.1"
+                          value={purchaseAmounts[coin.id] || ''}
+                          onChange={(e) => handleAmountChange(coin.id, e.target.value)}
+                          placeholder="Amount"
+                        />
+                        <button
+                          onClick={() => handleBuy(coin)}
+                          className="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded"
+                        >
+                          Buy
+                        </button>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                      ${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}
-                    </td>
-                    <td className={`px-6 py-4 whitespace-nowrap text-sm ${
-                      change24h >= 0 ? 'text-green-400' : 'text-red-400'
-                    }`}>
-                      {change24h.toFixed(2)}%
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                      {marketCap > 0 ? 
-                        `$${(marketCap / 1000000).toFixed(2)}M` : 
-                        volume > 0 ? 
-                          `Vol: $${(volume / 1000000).toFixed(2)}M` : 
-                          'N/A'}
-                    </td>
-                    {!isAutoTrading && (
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                        {isHighValue && (
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="number"
-                              min="0.1"
-                              step="0.1"
-                              value={purchaseAmounts[coin.id] || ''}
-                              onChange={(e) => handleAmountChange(coin.id, e.target.value)}
-                              placeholder="Amount"
-                              className="w-20 px-2 py-1 text-xs text-gray-900 bg-white rounded"
-                            />
-                            <button
-                              onClick={() => handleBuy(coin)}
-                              className="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded"
-                            >
-                              Buy
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };

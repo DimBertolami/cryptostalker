@@ -1,12 +1,35 @@
 import { create } from 'zustand';
 import { CryptoState, Trade, TradeableCrypto, Cryptocurrency, PurchaseEvent } from '../types';
-import { fetchNewCryptocurrencies } from '../services/apiService';
+
+// Define a type for the API response that includes all possible fields
+interface ApiCryptocurrency extends Omit<Cryptocurrency, 'price_history' | 'consecutive_decreases'> {
+  price_history?: number[];
+  consecutive_decreases?: number;
+}
+
+// Helper function to create a Cryptocurrency object with all required fields
+const createCryptocurrency = (data: Partial<Cryptocurrency>): Cryptocurrency => ({
+  id: data.id || '',
+  name: data.name || '',
+  symbol: data.symbol || '',
+  current_price: data.current_price ?? 0,
+  price_change_percentage_24h: data.price_change_percentage_24h ?? 0,
+  market_cap: data.market_cap ?? 0,
+  total_volume: data.total_volume ?? 0,
+  age_hours: data.age_hours ?? null,
+  date_added: data.date_added || new Date().toISOString(),
+  volume_24h: data.volume_24h ?? 0,
+  price_history: [],
+  consecutive_decreases: 0
+});
+import { fetchNewCryptocurrencies, fetchCryptoById } from '../services/apiService';
 import toast from 'react-hot-toast';
 
 const useCryptoStore = create<CryptoState>((set, get) => ({
   cryptos: [],
   newCryptos: [],
   highValueCryptos: [],
+  showAllCryptos: false,
   loading: false,
   error: null,
   autoRefresh: true,
@@ -27,6 +50,20 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
   portfolio: [],
   updateInterval: 30,
   isPaused: false,
+  tradeSettings: {
+    walletAllocation: {},
+    strategyParams: {
+      linear: {
+        buyThreshold: 5,
+        sellThreshold: 10
+      },
+      volatile: {
+        volatilityThreshold: 15,
+        quickSellThreshold: 5,
+        quickBuyThreshold: 3
+      }
+    }
+  },
 
   toggleFocusedMonitoring: () => {
     const { focusedMonitoring } = get();
@@ -42,10 +79,85 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
     toast.success(isPaused ? 'Resumed fetching' : 'Paused fetching');
   },
   
-  fetchCryptos: async () => {
+  setShowAllCryptos: (showAll) => set({ showAllCryptos: showAll }),
+  
+  fetchCryptos: async (showAll = false) => {
     const { isPaused, autoRefresh, focusedMonitoring, monitoredCrypto } = get();
     
     if (isPaused) return;
+    
+    // If showing all cryptos, just fetch without any filters
+    if (showAll || get().showAllCryptos) {
+      set({ loading: true, error: null });
+      try {
+        const allCryptos = await fetchNewCryptocurrencies();
+        const mappedCryptos = allCryptos.map((c: any): Cryptocurrency => {
+          const price = c.current_price ?? c.price ?? 0;
+          const volume24h = c.volume_24h ?? 0;
+          const marketCap = c.market_cap ?? 0;
+          const priceChange24h = c.price_change_percentage_24h ?? 0;
+          const totalVolume = c.total_volume ?? 0;
+          
+          return {
+            id: c.id || '',
+            name: c.name || '',
+            symbol: c.symbol || '',
+            current_price: price,
+            price_change_percentage_24h: priceChange24h,
+            market_cap: marketCap,
+            total_volume: totalVolume,
+            age_hours: c.age_hours ?? null,
+            date_added: c.date_added || new Date().toISOString(),
+            volume_24h: volume24h,
+            price_history: [],
+            consecutive_decreases: 0
+          } as Cryptocurrency;
+        });
+        
+        const processedCryptos = mappedCryptos.map((c: any): Cryptocurrency => {
+          const price = c.current_price ?? c.price ?? 0;
+          const volume24h = c.volume_24h ?? 0;
+          const marketCap = c.market_cap ?? 0;
+          const priceChange24h = c.price_change_percentage_24h ?? 0;
+          const totalVolume = c.total_volume ?? 0;
+          
+          return {
+            id: c.id || '',
+            name: c.name || '',
+            symbol: c.symbol || '',
+            current_price: price,
+            price_change_percentage_24h: priceChange24h,
+            market_cap: marketCap,
+            total_volume: totalVolume,
+            age_hours: c.age_hours ?? null,
+            date_added: c.date_added || new Date().toISOString(),
+            volume_24h: volume24h,
+            price_history: [],
+            consecutive_decreases: 0
+          };
+        });
+        
+        // Update state with the processed data
+        set({
+          cryptos: processedCryptos,
+          loading: false,
+          error: null,
+          lastUpdated: new Date().toISOString()
+        });
+        
+        // If we're showing all cryptos, update the newCryptos as well
+        if (get().showAllCryptos) {
+          set({
+            newCryptos: processedCryptos
+          });
+        }
+        return;
+      } catch (error) {
+        console.error('Error fetching all cryptos:', error);
+        set({ error: 'Failed to fetch all cryptocurrencies', loading: false });
+        return;
+      }
+    }
     
     try {
       // If focused monitoring is on and we have a monitored crypto,
@@ -56,56 +168,80 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
         console.log(`🔍 Focused monitoring enabled for ${monitoredCrypto.name}...`);
         
         // Only fetch the monitored coin to reduce API calls
-        const singleCoin = await fetchNewCryptocurrencies(monitoredCrypto.id);
+        const singleCoin = await fetchCryptoById(monitoredCrypto.id);
         if (!singleCoin) throw new Error(`Failed to fetch data for ${monitoredCrypto.name}`);
         
         // Update just this coin's price history
         const { highValueCryptos } = get();
         const updatedHighValueCryptos = [...highValueCryptos];
         
-        const existingIndex = updatedHighValueCryptos.findIndex(c => c.id === (singleCoin as Cryptocurrency).id);
+        const existingIndex = updatedHighValueCryptos.findIndex(c => c.id === singleCoin.id);
         if (existingIndex >= 0) {
           const existingCrypto = updatedHighValueCryptos[existingIndex];
           const priceHistory = [...(existingCrypto.price_history || [])];
           
-          // Update price history with safe access pattern
-          // Using 'as any' type assertion to avoid TypeScript errors while preserving nullish coalescing
-          const currentPrice = (singleCoin as any).price ?? (singleCoin as any).current_price ?? 0;
+          // Get the current price safely
+          const currentPrice = singleCoin.current_price ?? 0;
           
           // Always add price to history
           priceHistory.push(currentPrice);
           
-          // Keep only last 24 price points
-          if (priceHistory.length > 24) {
+          // Keep only the last 100 price points
+          if (priceHistory.length > 100) {
             priceHistory.shift();
           }
           
-          // Count consecutive decreases
+          // Calculate consecutive price decreases
           let consecutiveDecreases = 0;
           if (priceHistory.length >= 2) {
             for (let i = priceHistory.length - 1; i > 0; i--) {
-              if (priceHistory[i] < priceHistory[i-1]) {
+              if (priceHistory[i] < priceHistory[i - 1]) {
                 consecutiveDecreases++;
               } else {
                 break;
               }
             }
           }
+                    // Create a safe crypto object with all required fields
+          const updatedCrypto: Cryptocurrency = {
+            id: singleCoin.id || '',
+            name: singleCoin.name || '',
+            symbol: singleCoin.symbol || '',
+            current_price: singleCoin.current_price ?? 0,
+            price_change_percentage_24h: singleCoin.price_change_percentage_24h ?? 0,
+            market_cap: singleCoin.market_cap ?? 0,
+            // Use volume_24h instead of total_volume to match the Cryptocurrency interface
+            volume_24h: singleCoin.volume_24h ?? 0,
+            age_hours: singleCoin.age_hours ?? 0,
+            date_added: singleCoin.date_added || new Date().toISOString(),
+            price_history: Array.isArray(existingCrypto?.price_history) ? 
+              [...existingCrypto.price_history, singleCoin.current_price ?? 0] : 
+              [singleCoin.current_price ?? 0],
+            consecutive_decreases: existingCrypto ? 
+              ((singleCoin.current_price ?? 0) < (existingCrypto.current_price ?? 0) ? 
+                ((existingCrypto as any).consecutive_decreases || 0) + 1 : 0) : 0
+          } as Cryptocurrency;
           
-          updatedHighValueCryptos[existingIndex] = {
-            ...singleCoin as Cryptocurrency,
-            price_history: priceHistory,
-            consecutive_decreases: consecutiveDecreases
-          };
+          updatedHighValueCryptos[existingIndex] = updatedCrypto;
         } else {
           // Add new high value crypto with safe default value
-          // Using 'as any' type assertion to avoid TypeScript errors while preserving nullish coalescing
-          const safePrice = (singleCoin as any).price ?? (singleCoin as any).current_price ?? 0;
-          updatedHighValueCryptos.push({
-            ...(singleCoin as Cryptocurrency),
+          const safePrice = singleCoin.current_price ?? 0;
+          const newCrypto: Cryptocurrency = {
+            id: singleCoin.id || '',
+            name: singleCoin.name || '',
+            symbol: singleCoin.symbol || '',
+            current_price: safePrice,
+            price_change_percentage_24h: singleCoin.price_change_percentage_24h ?? 0,
+            market_cap: singleCoin.market_cap ?? 0,
+            // Use volume_24h instead of total_volume to match the Cryptocurrency interface
+            volume_24h: singleCoin.volume_24h ?? 0,
+            age_hours: singleCoin.age_hours ?? 0,
+            date_added: singleCoin.date_added || new Date().toISOString(),
             price_history: [safePrice],
             consecutive_decreases: 0
-          });
+          } as Cryptocurrency;
+          
+          updatedHighValueCryptos.push(newCrypto);
         }
         
         // Also update portfolio with new prices
@@ -125,7 +261,6 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
               highestPriceTimestamp = Date.now();
             }
             
-            console.log(`📉 Consecutive decreases: ${consecutiveDecreases}`);
             
             return {
               ...position,
@@ -146,11 +281,16 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
         });
         
         // Check if we should sell
-        if (existingIndex >= 0 && updatedHighValueCryptos[existingIndex].consecutive_decreases >= 3) {
-          const position = updatedPortfolio.find(p => p.id === (singleCoin as Cryptocurrency).id);
+        const cryptoToCheck = updatedHighValueCryptos[existingIndex];
+        const consecutiveDecreases = 'consecutive_decreases' in cryptoToCheck ? 
+          (cryptoToCheck as any).consecutive_decreases as number : 0;
+          
+        if (existingIndex >= 0 && consecutiveDecreases >= 3) {
+          const position = updatedPortfolio.find(p => p.id === singleCoin.id);
           if (position) {
-            const profit = ((singleCoin as any).current_price - position.averageBuyPrice) * position.balance;
-            const profitPercent = (((singleCoin as any).current_price / position.averageBuyPrice) - 1) * 100;
+            const currentPrice = singleCoin.current_price ?? 0;
+            const profit = (currentPrice - position.averageBuyPrice) * position.balance;
+            const profitPercent = ((currentPrice / position.averageBuyPrice) - 1) * 100;
             
             // Update trading stats
             const stats = get().tradingStats;
@@ -165,7 +305,21 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
             };
             
             // Sell after 3 consecutive decreases
-            get().sellManual(singleCoin as Cryptocurrency, 1, 'bitvavo');
+            const singleCoinData = singleCoin as unknown as ApiCryptocurrency;
+            const cryptoToSell = createCryptocurrency({
+              id: singleCoinData.id,
+              name: singleCoinData.name,
+              symbol: singleCoinData.symbol,
+              current_price: singleCoinData.current_price,
+              price_change_percentage_24h: singleCoinData.price_change_percentage_24h,
+              market_cap: singleCoinData.market_cap,
+              total_volume: singleCoinData.total_volume ?? singleCoinData.volume_24h,
+              age_hours: singleCoinData.age_hours,
+              volume_24h: singleCoinData.volume_24h,
+              date_added: singleCoinData.date_added
+            });
+            
+            get().sellManual(cryptoToSell, 1, 'bitvavo');
             set({ 
               monitoredCrypto: null,
               focusedMonitoring: false,
@@ -202,15 +356,25 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
         }
         
         // Process the data
-        const processedCryptos = cryptocurrencies.map((crypto: Cryptocurrency) => {
+        const processedCryptos = cryptocurrencies.map((crypto: any): Cryptocurrency => {
           // Calculate age in hours
           const dateAdded = crypto.date_added ? new Date(crypto.date_added) : null;
           const now = new Date();
           const ageInHours = dateAdded ? (now.getTime() - dateAdded.getTime()) / (1000 * 60 * 60) : null;
           
           return {
-            ...crypto,
-            age_hours: ageInHours
+            id: crypto.id || '',
+            name: crypto.name || '',
+            symbol: crypto.symbol || '',
+            current_price: crypto.current_price ?? 0,
+            price_change_percentage_24h: crypto.price_change_percentage_24h ?? 0,
+            market_cap: crypto.market_cap ?? 0,
+            total_volume: crypto.total_volume ?? 0,
+            age_hours: ageInHours,
+            date_added: crypto.date_added || new Date().toISOString(),
+            volume_24h: crypto.volume_24h ?? 0,
+            price_history: [],
+            consecutive_decreases: 0
           };
         });
         
@@ -238,7 +402,8 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
           const coinToBuy = highValueCryptos[randomIndex];
           
           // Buy the coin
-          const boughtTrade = get().buyManual(coinToBuy, 1, 'bitvavo');
+          // Remove unused boughtTrade variable and directly call buyManual
+        get().buyManual(coinToBuy, 1, 'bitvavo');
           
           // Set it as the monitored crypto
           set({
@@ -448,7 +613,8 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
         purchaseTimestamp: buyTimestamp,
         purchaseHistory: [purchaseEvent],
         highestPrice: price,
-        highestPriceTimestamp: buyTimestamp
+        highestPriceTimestamp: buyTimestamp,
+        price_history: [price] // Initialize with the current price
       };
       
       set(state => ({ portfolio: [newPosition, ...state.portfolio] }));
@@ -524,6 +690,10 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
     
     toast.success(`${tradeType} sell: ${amount} ${crypto.symbol.toUpperCase()} at $${price.toLocaleString()}`);
     return newTrade;
+  },
+  
+  updateTradeSettings: (newSettings: CryptoState['tradeSettings']) => {
+    set({ tradeSettings: newSettings });
   }
 }));
 

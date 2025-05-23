@@ -1,7 +1,15 @@
+import os
 import requests
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 
-API_KEY = '1758e18b-1744-4ad6-a2a9-908af2f33c8a'  # <- Replace this with your actual API key
+# Load environment variables from .env file
+load_dotenv()
+
+API_KEY = os.getenv('COINMARKETCAP_API_KEY')
+if not API_KEY:
+    raise ValueError("COINMARKETCAP_API_KEY environment variable not set")
+
 headers = {'X-CMC_PRO_API_KEY': API_KEY}
 
 def get_recent_cryptos(min_volume=1_500_000):
