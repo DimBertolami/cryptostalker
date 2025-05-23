@@ -237,6 +237,7 @@ def get_price_history(symbol):
             }
         })
         response.headers.add('Access-Control-Allow-Origin', '*')
+        return response
         
     except Exception as e:
         print(f"Error in get_price_history: {str(e)}")

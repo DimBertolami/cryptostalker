@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import useCryptoStore from '../store/useCryptoStore';
 import { Cryptocurrency } from '../types';
 import toast from 'react-hot-toast';
-import fetchCryptos from '../store/useCryptoStore';
 const NewCryptosTable: React.FC = () => {
   const { newCryptos, loading, isAutoTrading, buyManual } = useCryptoStore();
   const [sortColumn, setSortColumn] = useState<string>('age');
@@ -10,6 +9,8 @@ const NewCryptosTable: React.FC = () => {
   const [purchaseAmounts, setPurchaseAmounts] = useState<{ [key: string]: string }>({});
   const [ageFilter, setAgeFilter] = useState<string>('24h');
   const [showAllCoins, setShowAllCoins] = useState(false);
+
+  const { fetchCryptos } = useCryptoStore();
 
   useEffect(() => {
     const loadData = async () => {
