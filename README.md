@@ -3,9 +3,11 @@ most recent changes:
 1. when clicking the age column it will show the first 5000 coins in the list.
 ![image](https://github.com/user-attachments/assets/4e053d23-20d5-4b1e-842e-8a65394aeae0)
 2. you can also sort on the price column, 24h%, marketcap and volume 24h
-3. when autotrading, under portfolio i still need to rethink and rebuild the chart because at the moment this functionality is broken..
+3. when autotrading, under portfolio chart now shows real-time data:
+   ![image](https://github.com/user-attachments/assets/3b549e60-6857-41d1-adb7-61342516141b)
+
 ![image](https://github.com/user-attachments/assets/12514dc9-7288-4a13-8786-108c692c9d3a)
-4. new tab trade-settings.. at the moment uses mockdata but this will change asap.
+5. new tab trade-settings.. at the moment uses mockdata but this will change asap.
 ![image](https://github.com/user-attachments/assets/e1520980-a7f7-4280-9f8c-27c33bc8c639)
 
 Automated Trading Guru for New Cryptocurrencies
