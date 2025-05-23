@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import useCryptoStore from '../store/useCryptoStore';
 import { Cryptocurrency } from '../types';
 import toast from 'react-hot-toast';
+
 const NewCryptosTable: React.FC = () => {
-  const { newCryptos, loading, isAutoTrading, buyManual } = useCryptoStore();
+  const { newCryptos, cryptos, loading, isAutoTrading, buyManual, sellManual, setShowAllCryptos } = useCryptoStore();
   const [sortColumn, setSortColumn] = useState<string>('age');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [purchaseAmounts, setPurchaseAmounts] = useState<{ [key: string]: string }>({});
@@ -14,16 +15,23 @@ const NewCryptosTable: React.FC = () => {
 
   useEffect(() => {
     const loadData = async () => {
+      // Fetch with or without filters based on toggle
       await fetchCryptos(showAllCoins);
+      // Persist choice in the global store so other components can react as well
+      setShowAllCryptos(showAllCoins);
     };
     loadData();
-  }, [showAllCoins, fetchCryptos]);
-  
-  // Update the name column header to toggle showAllCoins
+  }, [showAllCoins, fetchCryptos, setShowAllCryptos]);
+
   const handleNameHeaderClick = () => {
     setShowAllCoins(!showAllCoins);
-    // Reset other filters when showing all coins
+    // Reset other filters when toggling show-all state
     setAgeFilter('all');
+    // Fetch all cryptos when toggling to show all
+    if (!showAllCoins) {
+      fetchCryptos(true);
+      setShowAllCryptos(true);
+    }
   };
 
   const handleSort = (column: string) => {
@@ -48,7 +56,7 @@ const NewCryptosTable: React.FC = () => {
       toast.error('Please enter a valid amount');
       return;
     }
-  
+
     try {
       // Pass the coin object as the first parameter and amount as the second
       await buyManual(coin, amount, 'bitvavo'); // or 'binance' depending on your default
@@ -66,19 +74,28 @@ const NewCryptosTable: React.FC = () => {
   };
 
   const getPrice = (coin: Cryptocurrency) => {
-    return coin.quote?.USD?.price || 0;
+    return (
+      (coin as any).current_price ??
+      (coin as any).price ??
+      coin.quote?.USD?.price ??
+      0
+    );
   };
 
   const get24hChange = (coin: Cryptocurrency) => {
-    return coin.quote?.USD?.percent_change_24h || 0;
+    return (
+      (coin as any).price_change_percentage_24h ??
+      coin.quote?.USD?.percent_change_24h ??
+      0
+    );
   };
 
   const getMarketCap = (coin: Cryptocurrency) => {
-    return coin.quote?.USD?.market_cap || 0;
+    return (coin as any).market_cap ?? coin.quote?.USD?.market_cap ?? 0;
   };
 
   const getVolume = (coin: Cryptocurrency) => {
-    return coin.quote?.USD?.volume_24h || 0;
+    return (coin as any).volume_24h ?? coin.quote?.USD?.volume_24h ?? 0;
   };
 
   const getAgeInHours = (dateAdded: string) => {
@@ -87,25 +104,60 @@ const NewCryptosTable: React.FC = () => {
     return (now.getTime() - addedDate.getTime()) / (1000 * 60 * 60);
   };
 
-  // Filter and sort logic
-  const filteredCryptos = useMemo(() => {
-    if (!newCryptos) return [];
-  
-    return newCryptos.filter(coin => {
-      if (showAllCoins) return true; // Show all coins when showAllCoins is true
+  // Filter + sort logic in one memo for performance
+  const processedCryptos = useMemo(() => {
+    const source = showAllCoins ? cryptos : newCryptos;
+    if (!source) return [];
+
+    // Apply age-based filtering
+    let result = source.filter(coin => {
+      // When 'all' is selected, show all coins
+      if (ageFilter === 'all') return true;
       
       const ageHours = getAgeInHours(coin.date_added);
-      
-      // Apply age filter
-      switch(ageFilter) {
+      switch (ageFilter) {
         case '24h': return ageHours < 24;
         case '48h': return ageHours < 48;
-        case '7d': return ageHours < 168;  // 7 days in hours
-        case '30d': return ageHours < 720; // 30 days in hours
+        case '7d': return ageHours < 168;
+        case '30d': return ageHours < 720;
         default: return true;
       }
     });
-  }, [newCryptos, ageFilter, showAllCoins]);
+
+    // Sorting
+    result = [...result].sort((a, b) => {
+      const dir = sortDirection === 'asc' ? 1 : -1;
+      let valA = 0;
+      let valB = 0;
+      switch (sortColumn) {
+        case 'price':
+          valA = getPrice(a);
+          valB = getPrice(b);
+          break;
+        case 'change24h':
+          valA = get24hChange(a);
+          valB = get24hChange(b);
+          break;
+        case 'marketCap':
+          valA = getMarketCap(a);
+          valB = getMarketCap(b);
+          break;
+        case 'volume':
+          valA = getVolume(a);
+          valB = getVolume(b);
+          break;
+        case 'age':
+        default:
+          valA = getAgeInHours(a.date_added);
+          valB = getAgeInHours(b.date_added);
+      }
+      if (valA < valB) return -1 * dir;
+      if (valA > valB) return 1 * dir;
+      return 0;
+    });
+
+    return result;
+  }, [cryptos, newCryptos, showAllCoins, ageFilter, sortColumn, sortDirection]);
 
   if (loading) {
     return <div className="text-center py-4">Loading...</div>;
@@ -117,8 +169,11 @@ const NewCryptosTable: React.FC = () => {
         <table className="min-w-full divide-y divide-gray-700">
           <thead className="bg-gray-800">
             <tr>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Name
+              <th 
+                className="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
+                onClick={handleNameHeaderClick}
+              >
+                Name {showAllCoins ? '(All)' : ''}
               </th>
               <th 
                 className="px-3 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
@@ -158,8 +213,19 @@ const NewCryptosTable: React.FC = () => {
                     className="ml-2 bg-gray-700 text-white text-xs border-0 rounded focus:ring-0"
                     value={ageFilter}
                     onChange={(e) => {
-                      setAgeFilter(e.target.value);
-                      setShowAllCoins(false); // Reset showAllCoins when changing age filter
+                      const selectedValue = e.target.value;
+                      setAgeFilter(selectedValue);
+                      
+                      if (selectedValue === 'all') {
+                        // Show all cryptos when 'All' is selected
+                        setShowAllCoins(true);
+                        fetchCryptos(true);
+                        setShowAllCryptos(true);
+                      } else {
+                        // Reset showAllCoins for other filters
+                        setShowAllCoins(false);
+                        setShowAllCryptos(false);
+                      }
                     }}
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -179,7 +245,7 @@ const NewCryptosTable: React.FC = () => {
             </tr>
           </thead>
           <tbody className="bg-gray-900 divide-y divide-gray-700">
-            {filteredCryptos.map((coin) => {
+            {processedCryptos.map((coin) => {
               const price = getPrice(coin);
               const change24h = get24hChange(coin);
               const marketCap = getMarketCap(coin);
@@ -228,6 +294,19 @@ const NewCryptosTable: React.FC = () => {
                           className="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded"
                         >
                           Buy
+                        </button>
+                        <button
+                          onClick={() => {
+                            const amount = parseFloat(purchaseAmounts[coin.id] || '1');
+                            if (isNaN(amount) || amount <= 0) {
+                              toast.error('Please enter a valid amount');
+                              return;
+                            }
+                            sellManual(coin, amount, 'bitvavo');
+                          }}
+                          className="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded"
+                        >
+                          Sell
                         </button>
                       </div>
                     </td>

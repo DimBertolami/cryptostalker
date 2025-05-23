@@ -501,6 +501,25 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
         highestPrice = newPrice;
         highestPriceTimestamp = Date.now();
       }
+
+      // Build new price history array capped to 500 points
+      const updatedHistory = Array.isArray(position.price_history)
+        ? [...position.price_history, { timestamp: Date.now(), price: newPrice }]
+        : [{ timestamp: Date.now(), price: newPrice }];
+      if (updatedHistory.length > 500) {
+        updatedHistory.shift();
+      }
+
+      // Calculate consecutive decreases (based on last two entries)
+      let consecutiveDecreases = 0;
+      if (updatedHistory.length >= 2) {
+        const len = updatedHistory.length;
+        if (updatedHistory[len - 1].price < updatedHistory[len - 2].price) {
+          consecutiveDecreases = (position.consecutive_decreases || 0) + 1;
+        } else {
+          consecutiveDecreases = 0;
+        }
+      }
       
       const updatedPortfolio = portfolio.map(p => {
         if (p.id === cryptoId) {
@@ -513,8 +532,10 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
             profitLoss,
             profitLossPercentage,
             highestPrice,
-            highestPriceTimestamp
-          };
+            highestPriceTimestamp,
+            price_history: updatedHistory,
+            consecutive_decreases: consecutiveDecreases
+          } as any;
         }
         return p;
       });
@@ -526,17 +547,6 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
   buyManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => {
     const { isLiveTrading } = get();
     const tradeType = isLiveTrading ? 'Live' : 'Paper';
-    
-    // Check if the exchange is connected
-    const exchanges = {
-      bitvavo: { apiKey: 'simulated', apiSecret: 'simulated', isConfigured: true, connected: true },
-      binance: { apiKey: 'simulated', apiSecret: 'simulated', isConfigured: true, connected: true }
-    };
-    
-    if (isLiveTrading && !exchanges[exchange].connected) {
-      toast.error(`${exchange} is not connected. Please configure it in Exchange Settings.`);
-      throw new Error(`${exchange} is not connected`);
-    }
     
     // Safe access to price with fallback
     // Using 'as any' type assertion to suppress TypeScript errors
@@ -584,7 +594,15 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
           const newProfitLossPercentage = ((p.currentPrice / newAverageBuyPrice) - 1) * 100;
           
           // Add to purchase history
-          const purchaseHistory = [...p.purchaseHistory, purchaseEvent];
+          const purchaseHistory = p.purchaseHistory ? [...p.purchaseHistory, purchaseEvent] : [purchaseEvent];
+          
+          // Track additional buy timestamp for chart indicators
+          p.additionalBuyTimestamps = p.additionalBuyTimestamps || [];
+          p.additionalBuyTimestamps.push({
+            timestamp: buyTimestamp,
+            price: price,
+            amount: amount
+          });
           
           return {
             ...p,
@@ -592,7 +610,10 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
             averageBuyPrice: newAverageBuyPrice,
             profitLoss: newProfitLoss,
             profitLossPercentage: newProfitLossPercentage,
-            purchaseHistory
+            purchaseHistory,
+            // Make sure we keep track of the latest buy
+            latestBuyTimestamp: buyTimestamp,
+            latestBuyPrice: price
           };
         }
         return p;
@@ -614,7 +635,10 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
         purchaseHistory: [purchaseEvent],
         highestPrice: price,
         highestPriceTimestamp: buyTimestamp,
-        price_history: [price] // Initialize with the current price
+        price_history: [{ timestamp: buyTimestamp, price: price }],
+        additionalBuyTimestamps: [],
+        latestBuyTimestamp: buyTimestamp,
+        latestBuyPrice: price
       };
       
       set(state => ({ portfolio: [newPosition, ...state.portfolio] }));
@@ -624,26 +648,64 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
     return newTrade;
   },
 
-  sellManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => {
+  sellManual: async (crypto: Cryptocurrency | TradeableCrypto, amount: number, exchange: 'bitvavo' | 'binance') => {
     const { isLiveTrading } = get();
     const tradeType = isLiveTrading ? 'Live' : 'Paper';
     
-    // Safe access to price with fallback
-    // Using 'as any' type assertion to suppress TypeScript errors
-    const price = (crypto as any).price ?? (crypto as any).current_price ?? 0;
+    // Get the current real-time price from the API to ensure accuracy
+    let price;
+    try {
+      // Import the price service dynamically to avoid circular dependencies
+      const { fetchCurrentPrice } = await import('../services/cryptoPriceService');
+      
+      // Get the symbol and average buy price for the API call
+      const symbol = crypto.symbol;
+      const averageBuyPrice = 'averageBuyPrice' in crypto ? crypto.averageBuyPrice : 0;
+      
+      // Fetch the current price from the API
+      price = await fetchCurrentPrice(symbol, averageBuyPrice);
+      
+      // If the API call fails or returns 0, use fallbacks
+      if (!price || price === 0) {
+        throw new Error('Failed to get current price from API');
+      }
+    } catch (error) {
+      console.error('Error fetching current price:', error);
+      
+      // Fallback 1: Use currentPrice from the crypto object if available
+      if ('currentPrice' in crypto && crypto.currentPrice) {
+        price = crypto.currentPrice;
+      } 
+      // Fallback 2: Use price fields from Cryptocurrency
+      else {
+        price = (crypto as any).price ?? (crypto as any).current_price ?? 0;
+      }
+      
+      // Fallback 3: Ensure we never sell at price 0
+      if (price === 0) {
+        // Use average buy price as fallback if available
+        if ('averageBuyPrice' in crypto && crypto.averageBuyPrice) {
+          price = crypto.averageBuyPrice * 1.1; // Assume 10% gain as a default
+        } else {
+          // Last resort fallback
+          price = 1.0;
+        }
+      }
+    }
+    
     const sellTimestamp = Date.now();
     
     // Generate unique ID
     const tradeId = `trade-${sellTimestamp}-${Math.random().toString(36).substring(2, 9)}`;
     
-    // Create the trade record
+    // Create the trade record with the accurate price
     const newTrade: Trade = {
       id: tradeId,
       cryptoId: crypto.id,
       cryptoName: crypto.name,
       type: 'sell',
       amount,
-      price, // Now safely defined
+      price,
       timestamp: sellTimestamp,
       exchange,
       isAuto: get().isAutoTrading,
@@ -662,8 +724,13 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
       return;
     }
     
-    // Record sellTimestamp for chart indicators
+    // Record sell information for chart indicators
     position.sellTimestamp = sellTimestamp;
+    position.sellPrice = price;
+    
+    // Calculate profit/loss for this sale
+    const profitLoss = (price - position.averageBuyPrice) * amount;
+    const profitLossPercentage = ((price / position.averageBuyPrice) - 1) * 100;
     
     // Update portfolio
     if (position.balance === amount) {
@@ -671,6 +738,9 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
       set(state => ({
         portfolio: state.portfolio.filter(p => p.id !== crypto.id)
       }));
+      
+      // Log the final profit/loss for the entire position
+      console.log(`Sold entire position of ${crypto.symbol}: Profit/Loss: $${profitLoss.toFixed(6)} (${profitLossPercentage.toFixed(2)}%)`);
     } else {
       // Update position
       const updatedPortfolio = portfolio.map(p => {
@@ -678,8 +748,8 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
           return {
             ...p,
             balance: p.balance - amount,
-            profitLoss: (p.currentPrice - p.averageBuyPrice) * (p.balance - amount),
-            // Profit loss percentage doesn't change on sell
+            profitLoss: (price - p.averageBuyPrice) * (p.balance - amount),
+            profitLossPercentage: ((price / p.averageBuyPrice) - 1) * 100,
           };
         }
         return p;
@@ -688,7 +758,7 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
       set({ portfolio: updatedPortfolio });
     }
     
-    toast.success(`${tradeType} sell: ${amount} ${crypto.symbol.toUpperCase()} at $${price.toLocaleString()}`);
+    toast.success(`${tradeType} sell: ${amount} ${crypto.symbol.toUpperCase()} at $${price.toFixed(6)}`);
     return newTrade;
   },
   
