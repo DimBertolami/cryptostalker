@@ -4,7 +4,12 @@ most recent changes:
 ![image](https://github.com/user-attachments/assets/4e053d23-20d5-4b1e-842e-8a65394aeae0)
 2. you can also sort on the price column, 24h%, marketcap and volume 24h
 3. when autotrading, under portfolio chart now shows real-time data:
-   ![image](https://github.com/user-attachments/assets/3b549e60-6857-41d1-adb7-61342516141b)
+![image](https://github.com/user-attachments/assets/73cb55da-bca9-4645-aeeb-7ca990e16f08)
+![image](https://github.com/user-attachments/assets/8c40c971-67b9-457b-86cd-f98cc7711954)
+![image](https://github.com/user-attachments/assets/fa683883-0153-4953-aa72-c57d8feef6e1)
+and under the history tab it also calculates the profit.. 
+![image](https://github.com/user-attachments/assets/96be94ab-141d-40a8-a2aa-31da9e2fefe8)
+this was a manual trade, still  need to sort out some of the wallet stuff and then the auto-trade function.. but this project is almost operational as you can  see..
 
 ![image](https://github.com/user-attachments/assets/12514dc9-7288-4a13-8786-108c692c9d3a)
 5. new tab trade-settings.. at the moment uses mockdata but this will change asap.
