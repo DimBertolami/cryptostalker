@@ -1,4 +1,9 @@
 # Cryptobot Nightstalker
+a few quick updated screenshots:
+![image](https://github.com/user-attachments/assets/0e135fd2-7a97-4326-a4ff-67c87d47d424)
+![image](https://github.com/user-attachments/assets/bd3dacc9-d8d2-4c0c-a609-b869bbc0944a)
+**5800% profit in 20 minutes!!**
+
 most recent changes:
 1. when clicking the name column (or set age to all) it will show the 5000 coins it is processing.
 ![image](https://github.com/user-attachments/assets/4e053d23-20d5-4b1e-842e-8a65394aeae0)
