@@ -1,8 +1,8 @@
 # Cryptobot Nightstalker
 most recent changes:
-1. when clicking the age column it will show the first 5000 coins in the list.
+1. when clicking the name column (or set age to all) it will show the 5000 coins it is processing.
 ![image](https://github.com/user-attachments/assets/4e053d23-20d5-4b1e-842e-8a65394aeae0)
-2. you can also sort on the price column, 24h%, marketcap and volume 24h
+2. you can also sort on the price column, 24h%, marketcap and volume, the last three are important (if you want to make a profit)
 3. when autotrading, under portfolio chart now shows real-time data:
 ![image](https://github.com/user-attachments/assets/73cb55da-bca9-4645-aeeb-7ca990e16f08)
 ![image](https://github.com/user-attachments/assets/8c40c971-67b9-457b-86cd-f98cc7711954)
