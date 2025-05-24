@@ -61,8 +61,13 @@ npm install
 
 ### Running the App
 - **Development mode:**
-  ```bash
+  ```bash for terminal 1
+  npm install
   npm run dev
+  ```
+  ```bash for terminal 2
+  export COINMARKETCAP_API_KEY=your_cmc_api_key
+  python3 server.py
   ```
 - **Production build:**
   ```bash
