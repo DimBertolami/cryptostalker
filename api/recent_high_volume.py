@@ -1,14 +1,8 @@
-import os
 import requests
 from datetime import datetime, timedelta
-from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
-
-API_KEY = os.getenv('COINMARKETCAP_API_KEY')
-if not API_KEY:
-    raise ValueError("COINMARKETCAP_API_KEY environment variable not set")
+# Direct API key assignment for CoinMarketCap
+API_KEY = 'a36ab379-15a0-409b-99ec-85ab7f2836ea'
 
 headers = {'X-CMC_PRO_API_KEY': API_KEY}
 

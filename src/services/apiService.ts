@@ -1,10 +1,10 @@
 import axios, { AxiosRequestConfig } from 'axios';
 
-// const API_BASE = import.meta.env.DEV 
-//     ? 'http://localhost:5001' 
-//     : window.location.origin;
-// In your API service file
+// Use the direct URL to the API server
 const API_BASE_URL = 'http://localhost:5001/api';
+
+// Configure axios defaults
+axios.defaults.withCredentials = false;
 
 interface Cryptocurrency {
     id: string;
@@ -96,8 +96,11 @@ export const fetchCryptoById = async (cryptoId: string): Promise<Cryptocurrency 
     }
 };
 
+
+
 export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
     try {
+        // Fetch data from CoinMarketCap, specifically requesting newest coins first
         const response = await fetchWithRetry(`${API_BASE_URL}/cmc-proxy`, {
             headers: {
                 'Accept': 'application/json',
@@ -106,16 +109,24 @@ export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
             params: {
                 endpoint: 'cryptocurrency/listings/latest',
                 start: '1',
-                limit: '5000', // Increased to maximum supported by CoinMarketCap
-                convert: 'USD'
+                limit: '5000', // Use maximum limit to get all available coins
+                convert: 'USD',
+                sort: 'date_added', // Sort by date_added to get newest coins first
+                sort_dir: 'desc' // Descending order (newest first)
             }
         });
         
-        // Reduce console logging - just show API was successful
-        console.log(`API fetched ${response.data.data.length} coins successfully from CoinMarketCap`);
+        // Check if the response contains data
+        if (!response.data || !response.data.data) {
+            console.error('Invalid API response structure:', response.data);
+            throw new Error('Invalid API response structure');
+        }
         
         const data = response.data.data;
-
+        
+        // Log what we found
+        console.log(`API fetched ${data.length} coins from CoinMarketCap`);
+        
         if (response.status === 429) {
           throw new Error('API rate limit exceeded - try again later');
         }
@@ -125,7 +136,8 @@ export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
           throw new Error('Invalid cryptocurrency data format');
         }
 
-        return data.map((coin: any) => {
+        // Process the data
+        const processedData = data.map((coin: any) => {
           const addedDate = new Date(coin.date_added);
           const now = new Date();
           const ageHours = (now.getTime() - addedDate.getTime()) / (1000 * 60 * 60);
@@ -135,16 +147,22 @@ export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
             name: coin.name,
             symbol: coin.symbol,
             price: coin.quote.USD.price,
-            current_price: coin.quote.USD.price, // Add this for the store filter
-            age_hours: ageHours, // Add this for the store filter
+            current_price: coin.quote.USD.price,
+            age_hours: ageHours, // This is crucial for filtering new coins
             volume_24h: coin.quote.USD.volume_24h,
-            market_cap: coin.quote.USD.market_cap, // Add market cap for high value filter
-            price_change_percentage_24h: coin.quote.USD.percent_change_24h, // Add 24h change percentage
+            market_cap: coin.quote.USD.market_cap,
+            price_change_percentage_24h: coin.quote.USD.percent_change_24h,
             date_added: coin.date_added
           };
         });
+        
+        // Log how many new coins we found (less than 24 hours old)
+        const newCoinsCount = processedData.filter(coin => coin.age_hours < 24).length;
+        console.log(`Found ${newCoinsCount} coins less than 24 hours old`);
+        
+        return processedData;
     } catch (error) {
         console.error('Error fetching cryptocurrencies:', error);
-        throw error;
+        throw error; // Throw the error instead of returning fallback data
     }
 };

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Coins, Moon, Sun, BarChart2 } from 'lucide-react';
 import useAppStore from '../store/useAppStore';
+import { WalletButton, WalletBalance } from './wallet';
 
 const Header: React.FC = () => {
   const { darkMode, toggleDarkMode } = useAppStore();
@@ -31,6 +32,9 @@ const Header: React.FC = () => {
               <Moon className="h-5 w-5 text-neutral-300" />
             )}
           </button>
+
+          <WalletBalance />
+          <WalletButton />
         </div>
       </div>
     </header>

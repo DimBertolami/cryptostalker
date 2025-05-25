@@ -379,15 +379,42 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
         });
         
         // Filter for new coins - any coin added in the last 24 hours
-        const newCryptos = processedCryptos.filter(crypto => {
+        // First ensure we have valid date_added and age_hours values
+        const validatedCryptos = processedCryptos.map(crypto => {
+            // If age_hours is missing, calculate it from date_added
+            if ((crypto as any).age_hours === undefined && crypto.date_added) {
+                try {
+                    const addedDate = new Date(crypto.date_added);
+                    const now = new Date();
+                    const ageHours = (now.getTime() - addedDate.getTime()) / (1000 * 60 * 60);
+                    return { ...crypto, age_hours: ageHours };
+                } catch (e) {
+                    console.error('Error calculating age for crypto:', crypto.name, e);
+                    return crypto;
+                }
+            }
+            return crypto;
+        });
+
+        // We no longer need mock data as we're using real-time CoinMarketCap data
+
+        // Filter for new coins - any coin added in the last 24 hours
+        let newCryptos = validatedCryptos.filter(crypto => {
             const age = (crypto as any).age_hours;
             return age !== undefined && age < 24;
         });
 
+        // Log the number of new coins found
+        if (newCryptos.length === 0) {
+            console.log('No new coins found in the last 24 hours');
+        } else {
+            console.log(`Found ${newCryptos.length} new coins in the last 24 hours`);
+        }
+
         // Filter for high value coins - any with a market cap over $1M or volume over $500K
         const highValueCryptos = newCryptos.filter(crypto => {
-            const marketCap = crypto.market_cap || (crypto.quote?.USD?.market_cap ?? 0);
-            const volume = crypto.volume_24h || (crypto.quote?.USD?.volume_24h ?? 0);
+            const marketCap = crypto.market_cap || 0;
+            const volume = crypto.volume_24h || crypto.total_volume || 0;
             return marketCap > 1000000 || volume > 500000;
         });
         
