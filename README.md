@@ -4,7 +4,10 @@ a few quick updated screenshots:
 ![image](https://github.com/user-attachments/assets/bd3dacc9-d8d2-4c0c-a609-b869bbc0944a)
 **5800% profit in 20 minutes!!**
 ![image](https://github.com/user-attachments/assets/e104dad0-cc16-4675-a63b-475392d14b5d)
-***the 3 coins it picked out were as you can see destined for greatness***
+***the 3 coins it picked out were as you can great***
+![image](https://github.com/user-attachments/assets/301e286f-2d04-4e69-b3a9-ced9a2780c60)
+![image](https://github.com/user-attachments/assets/702bb071-0960-4469-a0dd-fd6f4af8c909)
+***it sure knows how to pick em now***
 
 most recent changes:
 1. when clicking the name column (or set age to all) it will show the 5000 coins it is processing.
