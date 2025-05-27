@@ -11,11 +11,15 @@ cd "$PROJECT_DIR"
 echo "\n[1/5] Running shutdown script to ensure a clean environment..."
 ./shutdown.sh
 
+# Install npm dependencies
+echo "\n[2/5] Installing npm dependencies..."
+npm install
+
 # Wait for ports to be released
 sleep 2
 
 # Start the Flask backend server
-echo "\n[2/5] Starting Flask backend server..."
+echo "\n[3/5] Starting Flask backend server..."
 python3 api/server.py > ./api-server.log 2>&1 &
 BACKEND_PID=$!
 echo "Backend started with PID: $BACKEND_PID"
@@ -25,7 +29,7 @@ echo "Waiting for backend to initialize..."
 sleep 3
 
 # Verify the backend is running
-echo "\n[3/5] Verifying backend is running..."
+echo "\n[4/5] Verifying backend is running..."
 if lsof -i :5001 > /dev/null 2>&1; then
     echo "✅ Backend server is running on port 5001"
 else
@@ -35,7 +39,7 @@ else
 fi
 
 # Start the Vite frontend server
-echo "\n[4/5] Starting Vite frontend server..."
+echo "\n[5/5] Starting Vite frontend server..."
 npm run dev > ./frontend-server.log 2>&1 &
 FRONTEND_PID=$!
 echo "Frontend started with PID: $FRONTEND_PID"
@@ -54,7 +58,7 @@ else
 fi
 
 # Final verification step
-echo "\n[5/5] Verifying API connectivity..."
+echo "\n[6/6] Verifying API connectivity..."
 sleep 2
 
 # Test the API connection

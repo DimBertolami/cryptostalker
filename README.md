@@ -45,6 +45,7 @@ Automated Trading Guru for New Cryptocurrencies
 - **Multi-Exchange Support**: Connect to Bitvavo and Binance using your API keys.
 - **Configurable Update Interval**: Choose how frequently the app fetches new data.
 - **Dark Mode**: Toggle between light and dark themes for optimal viewing.
+- **Jupiter Swap Integration**: Seamlessly swap tokens using Jupiter's integrated terminal.
 
 ---
 
@@ -61,7 +62,7 @@ Automated Trading Guru for New Cryptocurrencies
 ## Getting Started
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) (v18 or higher recommended)
+- [Node.js](https://nodejs.org/) (v20 or higher recommended)
 - [npm](https://www.npmjs.com/) (comes with Node.js)
 
 ### Installation
@@ -70,20 +71,16 @@ npm install
 ```
 
 ### Running the App
-- **Development mode:**
-  ```bash for terminal 1
-  npm install
-  npm run dev
-  ```
-  ```bash for terminal 2
-  export COINMARKETCAP_API_KEY=your_cmc_api_key
-  python3 server.py
-  ```
-- **Production build:**
-  ```bash
-  npm run build
-  npm run preview
-  ```
+To start all services (frontend and backend):
+```bash
+./startup.sh
+```
+To stop all services:
+```bash
+./shutdown.sh
+```
+
+**Note:** Ensure your `COINMARKETCAP_API_KEY` is set as an environment variable or in a `.env` file if required by the backend configuration within `startup.sh`.
 
 ---
 
@@ -126,9 +123,22 @@ npm install
 
 ---
 
-## Dependencies
+## Key Dependencies
 
-- React, Zustand, Chart.js, react-chartjs-2, axios, Tailwind CSS, Lucide React, date-fns, react-hot-toast
+- **Frontend Framework**: React
+- **State Management**: Zustand
+- **Charting**: Chart.js, react-chartjs-2
+- **HTTP Client**: axios
+- **Styling**: Tailwind CSS
+- **Icons**: Lucide React
+- **Solana Integration**:
+  - `@solana/web3.js`
+  - `@solana/wallet-adapter-react`
+  - `@solana/wallet-adapter-react-ui`
+  - Various wallet adapters (`@solana/wallet-adapter-phantom`, etc.)
+- **Jupiter Protocol Integration**:
+  - `@jup-ag/terminal`
+- **Utility**: date-fns, react-hot-toast
 
 ---
 

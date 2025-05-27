@@ -18,14 +18,13 @@ export const fetchTradingData = async (): Promise<PortfolioItem[]> => {
     const response = await fetch('http://localhost:5001/api/trading/portfolio');
     
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Failed to fetch portfolio data');
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
     
     return await response.json();
   } catch (error) {
-    console.error('Error in fetchTradingData:', error);
-    throw error; // Re-throw to let the component handle it
+    console.error('Error fetching trading data:', error);
+    throw error;
   }
 };
 

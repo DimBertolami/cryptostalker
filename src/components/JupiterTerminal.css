@@ -1,0 +1,46 @@
+.jupiter-terminal-container {
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 20px;
+  border-radius: 12px;
+  background-color: #1a1a2e;
+}
+
+.jupiter-terminal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.jupiter-terminal-header h2 {
+  margin: 0;
+  color: white;
+}
+
+.wallet-button-container {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.connect-wallet-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+  text-align: center;
+}
+
+.connect-wallet-message p {
+  margin-bottom: 20px;
+  color: #a0aec0;
+}
+
+/* Override default Jupiter styles for better integration */
+.jupiter-terminal {
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 500px;
+}

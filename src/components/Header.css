@@ -1,0 +1,24 @@
+header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.bg-background-lighter {
+  background-color: rgba(var(--background-rgb), 0.8);
+}
+
+.text-primary {
+  color: var(--primary-color);
+}
+
+.text-primary-dark {
+  color: var(--primary-color-dark);
+}
+
+.highlighted-wallet {
+  border: 2px solid var(--primary-color);
+  box-shadow: 0 0 10px var(--primary-color);
+}

@@ -1,17 +1,16 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    nodePolyfills({
+      protocolImports: true,
+    }),
+  ],
   server: {
-    port: 5173,
-    strictPort: true, // Fail if port is already in use instead of incrementing
-    hmr: {
-      protocol: 'ws',
-      host: 'localhost',
-      port: 5173
-    },
     proxy: {
       '/api': {
         target: 'http://localhost:5001',
@@ -21,10 +20,21 @@ export default defineConfig({
       }
     }
   },
-  optimizeDeps: {
-    exclude: ['lucide-react'],
-  },
   define: {
+    'process.env': {},
     global: 'window',
+  },
+  resolve: {
+    alias: {
+      buffer: 'buffer/',
+    },
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      define: {
+        global: 'globalThis',
+      },
+    },
+    exclude: ['lucide-react'],
   },
 });

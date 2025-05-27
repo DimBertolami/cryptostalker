@@ -1,0 +1,57 @@
+.multi-wallet-button {
+    background-color: #4a4aff;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 15px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 140px;
+    height: 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .multi-wallet-button:hover {
+    background-color: #5959ff;
+    transform: translateY(-1px);
+  }
+  
+  .multi-wallet-button:active {
+    transform: translateY(1px);
+  }
+  
+  .multi-wallet-button.connected {
+    background-color: #292952;
+    border: 1px solid #4a4aff;
+  }
+  
+  .multi-wallet-button.connected:hover {
+    background-color: #31315e;
+  }
+  
+  .wallet-name-text {
+    font-weight: 600;
+    margin-right: 8px;
+  }
+  
+  .wallet-address-text {
+    font-family: monospace;
+    font-size: 12px;
+    opacity: 0.9;
+  }
+  
+  .wallet-count {
+    display: inline-block;
+    background-color: #4a4aff;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    margin-right: 8px;
+  }

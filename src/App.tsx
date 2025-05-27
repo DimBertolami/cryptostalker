@@ -1,27 +1,45 @@
 // React is imported automatically by the JSX transform
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import StatusBar from './components/StatusBar';
-import { WalletProvider } from './components/wallet';
+import WalletProvider from './components/wallet/WalletProvider'; 
+import JupiterSwap from './pages/JupiterSwap';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import './App.css';
+
+// Wallet adapter and provider imports, wallet definitions, and endpoint
+// are now handled in src/components/wallet/WalletProvider.tsx
 
 function App() {
+  // Wallet setup is now fully handled by the WalletProvider component.
+
   return (
+    // Our custom WalletProvider (src/components/wallet/WalletProvider.tsx)
+    // now handles ConnectionProvider, SolanaWalletProvider, and WalletModalProvider internally.
     <WalletProvider>
-      <div className="min-h-screen bg-background text-white">
-        <Toaster
-          position="top-right"
-          toastOptions={{
-            className: 'bg-background-lighter text-white border border-neutral-700',
-            duration: 3000,
-          }}
-        />
-        <Header />
-        <main className="container mx-auto px-4 py-6">
-          <StatusBar />
-          <Dashboard />
-        </main>
-      </div>
+      <Router>
+        <div className="app min-h-screen bg-background text-white">
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              className: 'bg-background-lighter text-white border border-neutral-700',
+              duration: 3000,
+            }}
+          />
+          <ToastContainer position="top-right" autoClose={5000} /> {/* For react-toastify */}
+          <Header />
+          <main className="container mx-auto px-4 py-6">
+            <StatusBar />
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/swap" element={<JupiterSwap />} />
+            </Routes>
+          </main>
+        </div>
+      </Router>
     </WalletProvider>
   );
 }
