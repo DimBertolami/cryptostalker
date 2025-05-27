@@ -184,7 +184,7 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
           const currentPrice = singleCoin.current_price ?? 0;
           
           // Always add price to history
-          priceHistory.push(currentPrice);
+          priceHistory.push({ timestamp: Date.now(), price: currentPrice });
           
           // Keep only the last 100 price points
           if (priceHistory.length > 100) {
@@ -237,7 +237,7 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
             volume_24h: singleCoin.volume_24h ?? 0,
             age_hours: singleCoin.age_hours ?? 0,
             date_added: singleCoin.date_added || new Date().toISOString(),
-            price_history: [safePrice],
+            price_history: [{ timestamp: Date.now(), price: safePrice }],
             consecutive_decreases: 0
           } as Cryptocurrency;
           
@@ -419,6 +419,12 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
         });
         
         console.log(`Found ${newCryptos.length} new coins, ${highValueCryptos.length} high value`);
+        if (highValueCryptos.length > 0) {
+          console.log('High value coins:');
+          highValueCryptos.forEach((coin, index) => {
+            console.log(`${index + 1}) ${coin.name} (${coin.symbol.toUpperCase()})`);
+          });
+        }
         
         // Auto-buy high value coins if auto-trading is enabled
         const { isAutoTrading } = get();
@@ -571,222 +577,328 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
     }
   },
   
-  buyManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => {
-    const { isLiveTrading } = get();
+  buyManual: async (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance'): Promise<Trade | undefined> => {
+    const { isLiveTrading, isAutoTrading } = get();
     const tradeType = isLiveTrading ? 'Live' : 'Paper';
-    
-    // Safe access to price with fallback
-    // Using 'as any' type assertion to suppress TypeScript errors
+
     const price = (crypto as any).price ?? (crypto as any).current_price ?? 0;
+    if (price === 0 && amount > 0) { // Prevent division by zero or trading at zero price if amount is positive
+        toast.error(`Cannot ${tradeType} buy ${crypto.symbol} at price $0.`);
+        return Promise.resolve(undefined);
+    }
     const buyTimestamp = Date.now();
-    
-    // Create the purchase event
-    const purchaseEvent: PurchaseEvent = {
-      amount,
-      price,
-      timestamp: buyTimestamp
-    };
-    
-    // Generate unique ID
-    const tradeId = `trade-${buyTimestamp}-${Math.random().toString(36).substring(2, 9)}`;
-    
-    // Create the trade record
-    const newTrade: Trade = {
-      id: tradeId,
-      cryptoId: crypto.id,
-      cryptoName: crypto.name,
-      type: 'buy',
-      amount,
-      price,
-      timestamp: buyTimestamp,
-      exchange,
-      isAuto: get().isAutoTrading,
-      isSimulated: !isLiveTrading
-    };
-    
-    // Update trades list
-    set(state => ({ trades: [newTrade, ...state.trades] }));
-    
-    // Update portfolio
-    const { portfolio } = get();
-    const existingPosition = portfolio.find(p => p.id === crypto.id);
-    
-    if (existingPosition) {
-      // Update existing position
-      const updatedPortfolio = portfolio.map(p => {
-        if (p.id === crypto.id) {
-          const newBalance = p.balance + amount;
-          const newAverageBuyPrice = ((p.balance * p.averageBuyPrice) + (amount * price)) / newBalance;
-          const newProfitLoss = (p.currentPrice - newAverageBuyPrice) * newBalance;
-          const newProfitLossPercentage = ((p.currentPrice / newAverageBuyPrice) - 1) * 100;
-          
-          // Add to purchase history
-          const purchaseHistory = p.purchaseHistory ? [...p.purchaseHistory, purchaseEvent] : [purchaseEvent];
-          
-          // Track additional buy timestamp for chart indicators
-          p.additionalBuyTimestamps = p.additionalBuyTimestamps || [];
-          p.additionalBuyTimestamps.push({
-            timestamp: buyTimestamp,
-            price: price,
-            amount: amount
-          });
-          
-          return {
-            ...p,
-            balance: newBalance,
-            averageBuyPrice: newAverageBuyPrice,
-            profitLoss: newProfitLoss,
-            profitLossPercentage: newProfitLossPercentage,
-            purchaseHistory,
-            // Make sure we keep track of the latest buy
-            latestBuyTimestamp: buyTimestamp,
-            latestBuyPrice: price
-          };
+
+    if (isLiveTrading && exchange === 'bitvavo') {
+      try {
+        if (!crypto.symbol) {
+            toast.error('Crypto symbol is missing for Bitvavo trade.');
+            return Promise.resolve(undefined);
         }
-        return p;
-      });
-      
-      set({ portfolio: updatedPortfolio });
+        const marketSymbol = `${crypto.symbol.toUpperCase()}-EUR`;
+        const orderPayload = {
+          market: marketSymbol,
+          side: 'buy',
+          order_type: 'market',
+          payload: { amountQuote: (amount * price).toString() } // Bitvavo market buy is by quote currency amount
+        };
+        
+        // console.log('Attempting Bitvavo live buy with payload:', orderPayload);
+
+        const response = await fetch('/api/bitvavo/order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderPayload),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          console.error('Bitvavo API error:', result);
+          toast.error(`Bitvavo buy order failed: ${result.error || 'Server error'}`);
+          return Promise.resolve(undefined);
+        }
+        
+        // console.log('Bitvavo live buy successful:', result);
+
+        const actualAmount = result.filledAmount ? parseFloat(result.filledAmount) : amount; 
+        const actualPrice = result.price ? parseFloat(result.price) : price; 
+        const actualTimestamp = result.createdTimestamp || buyTimestamp;
+
+        const tradeId = result.orderId || `trade-${actualTimestamp}-${Math.random().toString(36).substring(2, 9)}`;
+        const newTrade: Trade = {
+          id: tradeId, cryptoId: crypto.id, cryptoName: crypto.name, type: 'buy',
+          amount: actualAmount, price: actualPrice, timestamp: actualTimestamp,
+          exchange, isAuto: isAutoTrading, isSimulated: false
+        };
+        
+        set(state => ({ trades: [newTrade, ...state.trades] }));
+        
+        const currentPortfolio = get().portfolio; // Get latest portfolio state
+        const existingPosition = currentPortfolio.find(p => p.id === crypto.id);
+        const purchaseEvent: PurchaseEvent = { amount: actualAmount, price: actualPrice, timestamp: actualTimestamp };
+
+        if (existingPosition) {
+          const updatedPortfolio = currentPortfolio.map(p => {
+            if (p.id === crypto.id) {
+              const newBalance = p.balance + actualAmount;
+              const newAverageBuyPrice = newBalance > 0 ? ((p.balance * p.averageBuyPrice) + (actualAmount * actualPrice)) / newBalance : 0;
+              const currentMarketPrice = p.currentPrice || actualPrice;
+              const newProfitLoss = (currentMarketPrice - newAverageBuyPrice) * newBalance;
+              const newProfitLossPercentage = newAverageBuyPrice === 0 ? 0 : ((currentMarketPrice / newAverageBuyPrice) - 1) * 100;
+              const purchaseHistory = p.purchaseHistory ? [...p.purchaseHistory, purchaseEvent] : [purchaseEvent];
+              const additionalBuyTimestamps = p.additionalBuyTimestamps ? [...p.additionalBuyTimestamps] : [];
+              additionalBuyTimestamps.push({ timestamp: actualTimestamp, price: actualPrice, amount: actualAmount });
+              return {
+                ...p, balance: newBalance, averageBuyPrice: newAverageBuyPrice, profitLoss: newProfitLoss,
+                profitLossPercentage: newProfitLossPercentage, purchaseHistory, additionalBuyTimestamps,
+                latestBuyTimestamp: actualTimestamp, latestBuyPrice: actualPrice
+              };
+            }
+            return p;
+          });
+          set({ portfolio: updatedPortfolio });
+        } else {
+          const newPosition: TradeableCrypto = {
+            id: crypto.id, name: crypto.name, symbol: crypto.symbol, balance: actualAmount,
+            averageBuyPrice: actualPrice, currentPrice: actualPrice, profitLoss: 0, profitLossPercentage: 0,
+            purchaseTimestamp: actualTimestamp, purchaseHistory: [purchaseEvent],
+            highestPrice: actualPrice, highestPriceTimestamp: actualTimestamp,
+            price_history: [{ timestamp: actualTimestamp, price: actualPrice }],
+            additionalBuyTimestamps: [{ timestamp: actualTimestamp, price: actualPrice, amount: actualAmount }],
+            latestBuyTimestamp: actualTimestamp, latestBuyPrice: actualPrice
+          };
+          set(state => ({ portfolio: [newPosition, ...state.portfolio] }));
+        }
+
+        toast.success(`Live Bitvavo buy: ${actualAmount.toFixed(6)} ${crypto.symbol.toUpperCase()} at $${actualPrice.toLocaleString()}`);
+        return Promise.resolve(newTrade);
+
+      } catch (error) {
+        console.error('Failed to execute Bitvavo buy order (catch block):', error);
+        toast.error('Network error sending Bitvavo buy order.');
+        return Promise.resolve(undefined);
+      }
     } else {
-      // Add new position
-      const newPosition: TradeableCrypto = {
-        id: crypto.id,
-        name: crypto.name,
-        symbol: crypto.symbol,
-        balance: amount,
-        averageBuyPrice: price,
-        currentPrice: price,
-        profitLoss: 0,
-        profitLossPercentage: 0,
-        purchaseTimestamp: buyTimestamp,
-        purchaseHistory: [purchaseEvent],
-        highestPrice: price,
-        highestPriceTimestamp: buyTimestamp,
-        price_history: [{ timestamp: buyTimestamp, price: price }],
-        additionalBuyTimestamps: [],
-        latestBuyTimestamp: buyTimestamp,
-        latestBuyPrice: price
+      // Paper trading or other exchange logic
+      const tradeId = `trade-${buyTimestamp}-${Math.random().toString(36).substring(2, 9)}`;
+      const newTrade: Trade = {
+        id: tradeId, cryptoId: crypto.id, cryptoName: crypto.name, type: 'buy', amount, price,
+        timestamp: buyTimestamp, exchange, isAuto: isAutoTrading, isSimulated: !isLiveTrading
       };
       
-      set(state => ({ portfolio: [newPosition, ...state.portfolio] }));
+      set(state => ({ trades: [newTrade, ...state.trades] }));
+      const currentPortfolio = get().portfolio; // Get latest portfolio state
+      const existingPosition = currentPortfolio.find(p => p.id === crypto.id);
+      const purchaseEvent: PurchaseEvent = { amount, price, timestamp: buyTimestamp };
+
+      if (existingPosition) {
+        const updatedPortfolio = currentPortfolio.map(p => {
+          if (p.id === crypto.id) {
+            const newBalance = p.balance + amount;
+            const newAverageBuyPrice = newBalance > 0 ? ((p.balance * p.averageBuyPrice) + (amount * price)) / newBalance : 0;
+            const currentMarketPrice = p.currentPrice || price;
+            const newProfitLoss = (currentMarketPrice - newAverageBuyPrice) * newBalance;
+            const newProfitLossPercentage = newAverageBuyPrice === 0 ? 0 : ((currentMarketPrice / newAverageBuyPrice) - 1) * 100;
+            const purchaseHistory = p.purchaseHistory ? [...p.purchaseHistory, purchaseEvent] : [purchaseEvent];
+            const additionalBuyTimestamps = p.additionalBuyTimestamps ? [...p.additionalBuyTimestamps] : [];
+            additionalBuyTimestamps.push({ timestamp: buyTimestamp, price: price, amount: amount });
+            return {
+              ...p, balance: newBalance, averageBuyPrice: newAverageBuyPrice, profitLoss: newProfitLoss,
+              profitLossPercentage: newProfitLossPercentage, purchaseHistory, additionalBuyTimestamps,
+              latestBuyTimestamp: buyTimestamp, latestBuyPrice: price
+            };
+          }
+          return p;
+        });
+        set({ portfolio: updatedPortfolio });
+      } else {
+        const newPosition: TradeableCrypto = {
+          id: crypto.id, name: crypto.name, symbol: crypto.symbol, balance: amount,
+          averageBuyPrice: price, currentPrice: price, profitLoss: 0, profitLossPercentage: 0,
+          purchaseTimestamp: buyTimestamp, purchaseHistory: [purchaseEvent],
+          highestPrice: price, highestPriceTimestamp: buyTimestamp,
+          price_history: [{ timestamp: buyTimestamp, price: price }],
+          additionalBuyTimestamps: [{ timestamp: buyTimestamp, price: price, amount: amount }],
+          latestBuyTimestamp: buyTimestamp, latestBuyPrice: price
+        };
+        set(state => ({ portfolio: [newPosition, ...state.portfolio] }));
+      }
+
+      toast.success(`${tradeType} buy: ${amount} ${crypto.symbol.toUpperCase()} at $${price.toLocaleString()}`);
+      return Promise.resolve(newTrade);
     }
-    
-    toast.success(`${tradeType} buy: ${amount} ${crypto.symbol.toUpperCase()} at $${price.toLocaleString()}`);
-    return newTrade;
   },
 
-  sellManual: async (crypto: Cryptocurrency | TradeableCrypto, amount: number, exchange: 'bitvavo' | 'binance') => {
-    const { isLiveTrading } = get();
+  sellManual: async (crypto: Cryptocurrency | TradeableCrypto, amount: number, exchange: 'bitvavo' | 'binance'): Promise<Trade | undefined> => {
+    const { isLiveTrading, isAutoTrading } = get();
     const tradeType = isLiveTrading ? 'Live' : 'Paper';
-    
-    // Get the current real-time price from the API to ensure accuracy
-    let price;
+    let price = 0;
+
     try {
-      // Import the price service dynamically to avoid circular dependencies
       const { fetchCurrentPrice } = await import('../services/cryptoPriceService');
-      
-      // Get the symbol and average buy price for the API call
       const symbol = crypto.symbol;
       const averageBuyPrice = 'averageBuyPrice' in crypto ? crypto.averageBuyPrice : 0;
-      
-      // Fetch the current price from the API
-      price = await fetchCurrentPrice(symbol, averageBuyPrice);
-      
-      // If the API call fails or returns 0, use fallbacks
-      if (!price || price === 0) {
-        throw new Error('Failed to get current price from API');
+      const fetchedPrice = await fetchCurrentPrice(symbol, averageBuyPrice);
+      if (fetchedPrice && fetchedPrice > 0) {
+        price = fetchedPrice;
+      } else {
+        throw new Error('Failed to get valid current price from API');
       }
     } catch (error) {
-      console.error('Error fetching current price:', error);
-      
-      // Fallback 1: Use currentPrice from the crypto object if available
-      if ('currentPrice' in crypto && crypto.currentPrice) {
+      console.error('Error fetching current price for sell:', error);
+      if ('currentPrice' in crypto && crypto.currentPrice && crypto.currentPrice > 0) {
         price = crypto.currentPrice;
-      } 
-      // Fallback 2: Use price fields from Cryptocurrency
-      else {
-        price = (crypto as any).price ?? (crypto as any).current_price ?? 0;
-      }
-      
-      // Fallback 3: Ensure we never sell at price 0
-      if (price === 0) {
-        // Use average buy price as fallback if available
-        if ('averageBuyPrice' in crypto && crypto.averageBuyPrice) {
-          price = crypto.averageBuyPrice * 1.1; // Assume 10% gain as a default
-        } else {
-          // Last resort fallback
-          price = 1.0;
-        }
+      } else if ((crypto as any).price && (crypto as any).price > 0) {
+        price = (crypto as any).price;
+      } else if ('averageBuyPrice' in crypto && crypto.averageBuyPrice && crypto.averageBuyPrice > 0) {
+        price = crypto.averageBuyPrice * 1.05; // Fallback to 5% above avg buy price
+        toast.error(`Price fetch failed. Using 5% above average buy price for ${crypto.symbol}.`);
+      } else {
+        toast.error(`Cannot determine a valid price to sell ${crypto.symbol}.`);
+        return Promise.resolve(undefined);
       }
     }
-    
+
     const sellTimestamp = Date.now();
-    
-    // Generate unique ID
-    const tradeId = `trade-${sellTimestamp}-${Math.random().toString(36).substring(2, 9)}`;
-    
-    // Create the trade record with the accurate price
-    const newTrade: Trade = {
-      id: tradeId,
-      cryptoId: crypto.id,
-      cryptoName: crypto.name,
-      type: 'sell',
-      amount,
-      price,
-      timestamp: sellTimestamp,
-      exchange,
-      isAuto: get().isAutoTrading,
-      isSimulated: !isLiveTrading
-    };
-    
-    // Update trades list
-    set(state => ({ trades: [newTrade, ...state.trades] }));
-    
-    // Update portfolio
-    const { portfolio } = get();
-    const position = portfolio.find(p => p.id === crypto.id);
-    
-    if (!position || position.balance < amount) {
-      toast.error(`Insufficient balance to sell ${amount} ${crypto.symbol.toUpperCase()}`);
-      return;
-    }
-    
-    // Record sell information for chart indicators
-    position.sellTimestamp = sellTimestamp;
-    position.sellPrice = price;
-    
-    // Calculate profit/loss for this sale
-    const profitLoss = (price - position.averageBuyPrice) * amount;
-    const profitLossPercentage = ((price / position.averageBuyPrice) - 1) * 100;
-    
-    // Update portfolio
-    if (position.balance === amount) {
-      // Remove position if selling everything
-      set(state => ({
-        portfolio: state.portfolio.filter(p => p.id !== crypto.id)
-      }));
-      
-      // Log the final profit/loss for the entire position
-      console.log(`Sold entire position of ${crypto.symbol}: Profit/Loss: $${profitLoss.toFixed(6)} (${profitLossPercentage.toFixed(2)}%)`);
-    } else {
-      // Update position
-      const updatedPortfolio = portfolio.map(p => {
-        if (p.id === crypto.id) {
-          return {
-            ...p,
-            balance: p.balance - amount,
-            profitLoss: (price - p.averageBuyPrice) * (p.balance - amount),
-            profitLossPercentage: ((price / p.averageBuyPrice) - 1) * 100,
-          };
+
+    if (isLiveTrading && exchange === 'bitvavo') {
+      try {
+        if (!crypto.symbol) {
+            toast.error('Crypto symbol is missing for Bitvavo trade.');
+            return Promise.resolve(undefined);
         }
-        return p;
-      });
+        const currentPortfolio = get().portfolio;
+        const position = currentPortfolio.find(p => p.id === crypto.id);
+        if (!position || position.balance < amount) {
+          toast.error(`Insufficient balance to sell ${amount} ${crypto.symbol.toUpperCase()}`);
+          return Promise.resolve(undefined);
+        }
+
+        const marketSymbol = `${crypto.symbol.toUpperCase()}-EUR`;
+        const orderPayload = {
+          market: marketSymbol,
+          side: 'sell',
+          order_type: 'market',
+          payload: { amount: amount.toString() } // Bitvavo market sell is by base currency amount
+        };
+
+        const response = await fetch('/api/bitvavo/order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderPayload),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          console.error('Bitvavo API error:', result);
+          toast.error(`Bitvavo sell order failed: ${result.error || 'Server error'}`);
+          return Promise.resolve(undefined);
+        }
+
+        const actualAmountSold = result.filledAmount ? parseFloat(result.filledAmount) : amount;
+        const actualSellPrice = result.price ? parseFloat(result.price) : price;
+        const actualTimestamp = result.createdTimestamp || sellTimestamp;
+
+        const tradeId = result.orderId || `trade-${actualTimestamp}-${Math.random().toString(36).substring(2, 9)}`;
+        const newTrade: Trade = {
+          id: tradeId, cryptoId: crypto.id, cryptoName: crypto.name, type: 'sell',
+          amount: actualAmountSold, price: actualSellPrice, timestamp: actualTimestamp,
+          exchange, isAuto: isAutoTrading, isSimulated: false
+        };
+
+        set(state => ({ trades: [newTrade, ...state.trades] }));
+        
+        // Re-fetch portfolio to ensure we have the latest state before updating
+        const portfolioAfterTrade = get().portfolio;
+        const positionToUpdate = portfolioAfterTrade.find(p => p.id === crypto.id);
+
+        if (!positionToUpdate) { // Should not happen if initial check passed
+            console.error('Error: Position disappeared before sell update.');
+            toast.error('Portfolio update error after sell.');
+            return Promise.resolve(newTrade); // Return trade, but portfolio might be inconsistent
+        }
+
+        positionToUpdate.sellTimestamp = actualTimestamp;
+        positionToUpdate.sellPrice = actualSellPrice;
+        const profitLoss = (actualSellPrice - positionToUpdate.averageBuyPrice) * actualAmountSold;
+
+        if (positionToUpdate.balance <= actualAmountSold) { // Using <= to handle potential float precision issues
+          set(state => ({ portfolio: state.portfolio.filter(p => p.id !== crypto.id) }));
+          const profitLossPercentage = positionToUpdate.averageBuyPrice === 0 ? 0 : ((actualSellPrice / positionToUpdate.averageBuyPrice) - 1) * 100;
+          console.log(`Sold entire position of ${crypto.symbol}: Profit/Loss: $${profitLoss.toFixed(6)} (${profitLossPercentage.toFixed(2)}%)`);
+        } else {
+          const updatedPortfolio = portfolioAfterTrade.map(p => {
+            if (p.id === crypto.id) {
+              const newBalance = p.balance - actualAmountSold;
+              // Average buy price doesn't change on sell
+              const currentMarketPrice = p.currentPrice || actualSellPrice;
+              const newNetProfitLoss = (currentMarketPrice - p.averageBuyPrice) * newBalance; // Profit/loss on remaining balance
+              const newNetProfitLossPercentage = p.averageBuyPrice === 0 ? 0 : ((currentMarketPrice / p.averageBuyPrice) - 1) * 100;
+              return {
+                ...p, balance: newBalance, profitLoss: newNetProfitLoss,
+                profitLossPercentage: newNetProfitLossPercentage,
+              };
+            }
+            return p;
+          });
+          set({ portfolio: updatedPortfolio });
+        }
+
+        toast.success(`Live Bitvavo sell: ${actualAmountSold.toFixed(6)} ${crypto.symbol.toUpperCase()} at $${actualSellPrice.toLocaleString()}`);
+        return Promise.resolve(newTrade);
+
+      } catch (error) {
+        console.error('Failed to execute Bitvavo sell order (catch block):', error);
+        toast.error('Network error sending Bitvavo sell order.');
+        return Promise.resolve(undefined);
+      }
+    } else {
+      // Paper trading or other exchange logic
+      const currentPortfolio = get().portfolio;
+      const position = currentPortfolio.find(p => p.id === crypto.id);
+
+      if (!position || position.balance < amount) {
+        toast.error(`Insufficient balance to sell ${amount} ${crypto.symbol.toUpperCase()}`);
+        return Promise.resolve(undefined); // Changed from 'return;' to match Promise return type
+      }
+
+      const tradeId = `trade-${sellTimestamp}-${Math.random().toString(36).substring(2, 9)}`;
+      const newTrade: Trade = {
+        id: tradeId, cryptoId: crypto.id, cryptoName: crypto.name, type: 'sell', amount, price,
+        timestamp: sellTimestamp, exchange, isAuto: isAutoTrading, isSimulated: !isLiveTrading
+      };
+
+      set(state => ({ trades: [newTrade, ...state.trades] }));
       
-      set({ portfolio: updatedPortfolio });
+      position.sellTimestamp = sellTimestamp;
+      position.sellPrice = price;
+      const profitLoss = (price - position.averageBuyPrice) * amount;
+      const profitLossPercentage = position.averageBuyPrice === 0 ? 0 : ((price / position.averageBuyPrice) - 1) * 100;
+
+      if (position.balance === amount) {
+        set(state => ({ portfolio: state.portfolio.filter(p => p.id !== crypto.id) }));
+        console.log(`Sold entire position of ${crypto.symbol}: Profit/Loss: $${profitLoss.toFixed(6)} (${profitLossPercentage.toFixed(2)}%)`);
+      } else {
+        const updatedPortfolio = currentPortfolio.map(p => {
+          if (p.id === crypto.id) {
+            const newBalance = p.balance - amount;
+            const currentMarketPrice = p.currentPrice || price;
+            const newNetProfitLoss = (currentMarketPrice - p.averageBuyPrice) * newBalance;
+            const newNetProfitLossPercentage = p.averageBuyPrice === 0 ? 0 : ((currentMarketPrice / p.averageBuyPrice) - 1) * 100;
+            return {
+              ...p, balance: newBalance, profitLoss: newNetProfitLoss,
+              profitLossPercentage: newNetProfitLossPercentage,
+            };
+          }
+          return p;
+        });
+        set({ portfolio: updatedPortfolio });
+      }
+
+      toast.success(`${tradeType} sell: ${amount} ${crypto.symbol.toUpperCase()} at $${price.toFixed(6)}`);
+      return Promise.resolve(newTrade);
     }
-    
-    toast.success(`${tradeType} sell: ${amount} ${crypto.symbol.toUpperCase()} at $${price.toFixed(6)}`);
-    return newTrade;
   },
   
   updateTradeSettings: (newSettings: CryptoState['tradeSettings']) => {

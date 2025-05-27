@@ -28,7 +28,16 @@ const Header: React.FC = () => {
             className="p-2 rounded-full hover:bg-neutral-700 transition-colors"
             aria-label="Toggle dark mode"
           >
-            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            <div className="relative w-5 h-5">
+              <Sun
+                size={20}
+                className={`absolute transition-transform duration-300 ${darkMode ? 'rotate-90 scale-0' : 'rotate-0 scale-100'}`}
+              />
+              <Moon
+                size={20}
+                className={`absolute transition-transform duration-300 ${darkMode ? 'rotate-0 scale-100' : '-rotate-90 scale-0'}`}
+              />
+            </div>
           </button>
           <button 
             className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark transition-colors"

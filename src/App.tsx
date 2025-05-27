@@ -9,11 +9,22 @@ import JupiterSwap from './pages/JupiterSwap';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
+import useAppStore from './store/useAppStore'; // Import the Zustand store
+import { useEffect } from 'react'; // Import useEffect
 
 // Wallet adapter and provider imports, wallet definitions, and endpoint
 // are now handled in src/components/wallet/WalletProvider.tsx
 
 function App() {
+  const { darkMode } = useAppStore();
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
   // Wallet setup is now fully handled by the WalletProvider component.
 
   return (

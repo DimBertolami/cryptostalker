@@ -5,3 +5,6 @@ flask-limiter
 flask-caching
 gunicorn
 gevent
+python-bitvavo-api
+ccxt
+python-dotenv

@@ -1,5 +1,18 @@
 // Define types for the cryptocurrency application
 
+export interface QuoteCurrency {
+  price: number;
+  volume_24h?: number;
+  volume_change_24h?: number;
+  percent_change_1h?: number;
+  percent_change_24h?: number;
+  percent_change_7d?: number;
+  market_cap?: number;
+  market_cap_dominance?: number;
+  fully_diluted_market_cap?: number;
+  last_updated?: string;
+}
+
 export interface Cryptocurrency {
   id: string;
   name: string;
@@ -7,12 +20,15 @@ export interface Cryptocurrency {
   current_price: number;
   price_change_percentage_24h: number;
   market_cap: number;
-  total_volume: number;
+  total_volume?: number; // Made optional
   age_hours: number | null;
   date_added: string;
-  volume_24h: number;
-  price_history: any[];
-  consecutive_decreases: number;
+  volume_24h?: number; // Often part of quote, made optional if used directly
+  price_history?: PricePoint[]; // Typed and made optional
+  consecutive_decreases?: number; // Made optional
+  quote?: {
+    [key: string]: QuoteCurrency; // e.g., USD, BTC, ETH
+  };
 }
 
 export interface PurchaseEvent {
@@ -46,6 +62,7 @@ export interface TradeableCrypto {
   highestPrice: number;
   highestPriceTimestamp: number;
   price_history: PricePoint[];
+  consecutive_decreases?: number;
   additionalBuyTimestamps?: BuyEvent[];
   latestBuyTimestamp?: number;
   latestBuyPrice?: number;
@@ -109,6 +126,7 @@ export interface CryptoState {
   updateInterval: number;
   isPaused: boolean;
   tradeSettings: TradeSettings;
+  lastUpdated?: string; // Changed to string to match usage (e.g., ISO date string)
   
   toggleFocusedMonitoring: () => void;
   togglePause: () => void;
@@ -118,7 +136,7 @@ export interface CryptoState {
   toggleAutoTrading: () => void;
   toggleLiveTrading: () => void;
   updatePriceForCrypto: (cryptoId: string, newPrice: number) => void;
-  buyManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => Trade | undefined;
-  sellManual: (crypto: Cryptocurrency | TradeableCrypto, amount: number, exchange: 'bitvavo' | 'binance') => Trade | undefined;
+  buyManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => Promise<Trade | undefined>; // Updated return type
+  sellManual: (crypto: Cryptocurrency | TradeableCrypto, amount: number, exchange: 'bitvavo' | 'binance') => Promise<Trade | undefined>; // Updated return type
   updateTradeSettings: (newSettings: TradeSettings) => void;
 }

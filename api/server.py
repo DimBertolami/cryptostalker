@@ -11,6 +11,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
 from dotenv import load_dotenv
+import ccxt
 
 # Load environment variables
 try:
@@ -201,6 +202,81 @@ def cmc_proxy():
             "traceback": traceback_str if DEBUG_MODE else "Enable DEBUG_MODE for traceback"
         }), 500
 
+@app.route('/api/ccxt/exchanges', methods=['GET'])
+def list_ccxt_exchanges():
+    """Returns a list of all exchange IDs supported by CCXT."""
+    try:
+        return jsonify(ccxt.exchanges)
+    except Exception as e:
+        print(f"Error listing CCXT exchanges: {e}")
+        return jsonify({"error": "Could not retrieve CCXT exchanges", "details": str(e)}), 500
+
+@app.route('/api/ccxt/test_exchange_markets', methods=['GET'])
+# @limiter.limit("10 per minute") # Optional: consider rate limiting later
+def test_ccxt_exchange_markets():
+    """Tests loading markets for a given CCXT exchange ID."""
+    exchange_id = request.args.get('exchange_id')
+    if not exchange_id:
+        return jsonify({"error": "Missing 'exchange_id' parameter"}), 400
+
+    if exchange_id not in ccxt.exchanges:
+        return jsonify({"error": f"Exchange '{exchange_id}' is not supported by CCXT."}), 404
+
+    try:
+        if DEBUG_MODE:
+            print(f"Attempting to initialize CCXT exchange: {exchange_id}")
+        
+        exchange_class = getattr(ccxt, exchange_id)
+        # Initialize without API keys for public data (loading markets)
+        exchange = exchange_class()
+        
+        if DEBUG_MODE:
+            print(f"Successfully initialized {exchange_id}. Attempting to load markets...")
+            
+        markets = exchange.load_markets()
+        
+        if DEBUG_MODE:
+            print(f"Successfully loaded markets for {exchange_id}. Number of markets: {len(markets) if markets else 0}")
+            
+        # Return a summary or a sample of markets to avoid overly large responses
+        if markets:
+            sample_markets = list(markets.keys())[:5] # First 5 market symbols
+            return jsonify({
+                "exchange_id": exchange_id,
+                "status": "success",
+                "message": f"Successfully loaded markets for {exchange_id}.",
+                "market_count": len(markets),
+                "sample_markets": sample_markets
+            })
+        else:
+            return jsonify({
+                "exchange_id": exchange_id,
+                "status": "success",
+                "message": f"Loaded markets for {exchange_id}, but no markets were returned or the list was empty.",
+                "market_count": 0
+            })
+
+    except ccxt.NetworkError as e:
+        print(f"NetworkError loading markets for {exchange_id}: {e}")
+        return jsonify({"error": f"Network error connecting to {exchange_id}", "details": str(e)}), 502
+    except ccxt.ExchangeError as e:
+        print(f"ExchangeError loading markets for {exchange_id}: {e}")
+        return jsonify({"error": f"Error from {exchange_id} exchange API", "details": str(e)}), 500
+    except AttributeError as e:
+        # This might happen if getattr fails for some reason, though unlikely if exchange_id is in ccxt.exchanges
+        print(f"AttributeError for {exchange_id}: {e}")
+        return jsonify({"error": f"Could not find or initialize exchange class for {exchange_id}", "details": str(e)}), 500
+    except Exception as e:
+        import traceback
+        traceback_str = traceback.format_exc()
+        print(f"Unexpected error loading markets for {exchange_id}: {e}")
+        print(f"Traceback: {traceback_str}")
+        return jsonify({
+            "error": f"Unexpected error processing {exchange_id}", 
+            "details": str(e),
+            "traceback": traceback_str if DEBUG_MODE else "Enable DEBUG_MODE for traceback"
+        }), 500
+
 @app.route('/api/trading/portfolio', methods=['GET'])
 @cache.cached(timeout=60)  # Cache for 1 minute
 def get_portfolio():
@@ -378,6 +454,61 @@ def get_price_history(symbol):
         error_response.status_code = 500
         error_response.headers.add('Access-Control-Allow-Origin', '*')
         return error_response
+
+@app.route('/api/bitvavo/order', methods=['POST'])
+def bitvavo_place_order():
+    if not bitvavo_client:
+        return jsonify({"error": "Bitvavo client not initialized. Check API keys."}), 500
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid request body"}), 400
+
+    market = data.get('market')  # e.g., 'BTC-EUR'
+    side = data.get('side')      # 'buy' or 'sell'
+    order_type = data.get('orderType', 'market') # Default to market
+    amount_str = data.get('amount') # Amount as string
+
+    if not all([market, side, amount_str]):
+        return jsonify({"error": "Missing required fields: market, side, amount"}), 400
+
+    if order_type != 'market':
+        return jsonify({"error": "Only market orders are currently supported by this endpoint"}), 400
+
+    try:
+        # For market buy, 'amountQuote' is used (amount of quote currency)
+        # For market sell, 'amount' is used (amount of base currency)
+        payload = {}
+        if side == 'buy':
+            payload['amountQuote'] = amount_str
+        elif side == 'sell':
+            payload['amount'] = amount_str
+        else:
+            return jsonify({"error": "Invalid side. Must be 'buy' or 'sell'."}), 400
+        
+        if DEBUG_MODE:
+            print(f"Placing Bitvavo order: market={market}, side={side}, orderType={order_type}, payload={payload}")
+
+        response = bitvavo_client.placeOrder(market, side, order_type, payload)
+        
+        if DEBUG_MODE:
+            print(f"Bitvavo API response: {response}")
+            
+        return jsonify(response), 200
+
+    except Exception as e:
+        error_message = str(e)
+        if DEBUG_MODE:
+            print(f"Error placing Bitvavo order: {error_message}")
+            import traceback
+            traceback.print_exc()
+        
+        # Try to parse Bitvavo's specific error format if possible
+        try:
+            error_details = json.loads(error_message)
+            return jsonify({"error": "Bitvavo API error", "details": error_details}), 500
+        except json.JSONDecodeError:
+            return jsonify({"error": "Failed to place Bitvavo order", "details": error_message}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=False)
