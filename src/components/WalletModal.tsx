@@ -39,15 +39,15 @@ const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => {
       } as any);
     }
     
-    // Sort wallets to ensure Phantom is at the top
-    const sortedWallets = walletsList.sort((a, b) => {
-      // Phantom first
-      if (a.adapter.name.toLowerCase().includes('phantom')) return -1;
-      if (b.adapter.name.toLowerCase().includes('phantom')) return 1;
-      return 0;
-    });
-    
-    console.log('Sorted wallets:', sortedWallets.map(w => w.adapter.name));
+    // Custom wallet order
+    const desiredOrder = ['empty', 'Phantom', 'Solflare', 'Trust', 'Backpack', 'Glow', 'Brave', 'MathWallet'];
+    const sortedWallets = desiredOrder
+      .map(name => walletsList.find(w => w.adapter.name.toLowerCase() === name.toLowerCase()))
+      .filter((w): w is typeof walletsList[number] => !!w);
+
+    // Build the custom wallet array: [length, ...names]
+    const customWalletArray = [sortedWallets.length, ...sortedWallets.map(w => w.adapter.name)];
+    console.log('Custom wallet array:', customWalletArray);
     setAvailableWallets(sortedWallets);
     
     // When connected, get the current wallet name
@@ -98,10 +98,10 @@ const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => {
           </p>
           
           <ul className="wallet-list">
-            {availableWallets.map((wallet) => {
-              // Add debug log to check available wallets
-              console.log(`Available wallet: ${wallet.adapter.name}`);
-              
+            {/* Render wallets in the custom order, skipping missing ones */}
+            {availableWallets.map((wallet, idx) => {
+              // idx+1 because customWalletArray[0] is the length
+              console.log(`Wallet ${idx+1}: ${wallet.adapter.name}`);
               return (
                 <li 
                   key={wallet.adapter.name} 

@@ -19,6 +19,7 @@ const MultiWalletModal: React.FC<MultiWalletModalProps> = ({ isOpen, onClose }) 
   } = useMultiWallet();
   
   const [availableWallets, setAvailableWallets] = useState<any[]>([]);
+  const [disconnectWarning, setDisconnectWarning] = useState<string | null>(null);
 
   // Get all available wallets
   useEffect(() => {
@@ -40,10 +41,20 @@ const MultiWalletModal: React.FC<MultiWalletModalProps> = ({ isOpen, onClose }) 
       // Set it as primary if clicked again
       setPrimaryWallet(walletName);
     } else {
-      // Connect the wallet
+      // Before connecting, check if another wallet of this type is connected
+      const alreadyConnectedOfType = connectedWallets.find(
+        wallet => wallet.adapter.name === walletName
+      );
       await connectWallet(walletName);
+      // After connect, if a disconnect happened, show warning
+      if (alreadyConnectedOfType) {
+        setDisconnectWarning(`Only one ${walletName} wallet can be connected at a time due to wallet extension limitations. Your previous ${walletName} wallet was disconnected.`);
+      }
     }
   };
+
+  // Dismiss warning
+  const dismissWarning = () => setDisconnectWarning(null);
 
   // Handle wallet disconnection
   const handleWalletDisconnect = async (walletName: WalletName) => {
@@ -65,7 +76,12 @@ const MultiWalletModal: React.FC<MultiWalletModalProps> = ({ isOpen, onClose }) 
           <p className="wallet-modal-subtitle">You can connect multiple wallets simultaneously</p>
           <button className="close-button" onClick={onClose}>×</button>
         </div>
-        
+        {disconnectWarning && (
+          <div className="wallet-warning-banner" style={{background:'#fffbe6',color:'#ad8b00',padding:'10px',margin:'10px 0',border:'1px solid #ffe58f',borderRadius:'6px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <span>{disconnectWarning}</span>
+            <button style={{marginLeft:'15px'}} onClick={dismissWarning}>Dismiss</button>
+          </div>
+        )}
         <div className="wallet-modal-body">
           {connectedWallets.length > 0 && (
             <div className="connected-wallets-section">

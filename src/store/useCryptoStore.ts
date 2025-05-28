@@ -22,10 +22,10 @@ const createCryptocurrency = (data: Partial<Cryptocurrency>): Cryptocurrency => 
   price_history: [],
   consecutive_decreases: 0
 });
-import { fetchNewCryptocurrencies, fetchCryptoById } from '../services/apiService';
+import { fetchNewCryptocurrencies, fetchCryptoById, fetchNewCoinsFromCoinGecko } from '../services/apiService';
 import toast from 'react-hot-toast';
 
-const useCryptoStore = create<CryptoState>((set, get) => ({
+const useCryptoStore = create<CryptoState & { fetchSource: 'coinmarketcap' | 'coingecko'; setFetchSource: (source: 'coinmarketcap' | 'coingecko') => void }>((set, get) => ({
   cryptos: [],
   newCryptos: [],
   highValueCryptos: [],
@@ -36,6 +36,8 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
   isLiveTrading: false,
   isAutoTrading: false,
   monitoredCrypto: null,
+  fetchSource: 'coinmarketcap',
+  setFetchSource: (source) => set({ fetchSource: source }),
   tradingStats: {
     totalProfit: 0,
     successfulTrades: 0,
@@ -90,7 +92,24 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
     if (showAll || get().showAllCryptos) {
       set({ loading: true, error: null });
       try {
-        const allCryptos = await fetchNewCryptocurrencies();
+        // Use fetchSource to determine which API to use
+        const fetchSource = get().fetchSource;
+        let allCryptos;
+        if (fetchSource === 'coingecko') {
+          allCryptos = await fetchNewCoinsFromCoinGecko();
+        } else {
+          allCryptos = await fetchNewCryptocurrencies();
+        }
+      console.log('[DEBUG] Raw cryptos fetched (could be CMC or CoinGecko):', allCryptos);
+      if (Array.isArray(allCryptos)) {
+        if (allCryptos.length === 0) {
+          console.warn('[DEBUG] No cryptos returned from fetchNewCryptocurrencies');
+        } else {
+          console.log(`[DEBUG] First crypto fetched:`, allCryptos[0]);
+        }
+      } else {
+        console.error('[DEBUG] fetchNewCryptocurrencies did not return an array:', allCryptos);
+      }
         const mappedCryptos = allCryptos.map((c: any): Cryptocurrency => {
           const price = c.current_price ?? c.price ?? 0;
           const volume24h = c.volume_24h ?? 0;
@@ -147,14 +166,13 @@ const useCryptoStore = create<CryptoState>((set, get) => ({
         
         // If we're showing all cryptos, update the newCryptos as well
         if (get().showAllCryptos) {
-          set({
-            newCryptos: processedCryptos
-          });
+          set({ newCryptos: processedCryptos });
         }
         return;
       } catch (error) {
         console.error('Error fetching all cryptos:', error);
-        set({ error: 'Failed to fetch all cryptocurrencies', loading: false });
+        set({ error: 'Failed to fetch all cryptocurrencies' });
+        set({ loading: false });
         return;
       }
     }

@@ -98,6 +98,47 @@ export const fetchCryptoById = async (cryptoId: string): Promise<Cryptocurrency 
 
 
 
+// Helper: Fetch new coins from CoinGecko
+export const fetchNewCoinsFromCoinGecko = async (): Promise<Cryptocurrency[]> => {
+    try {
+        const response = await axios.get('https://api.coingecko.com/api/v3/coins/markets', {
+            params: {
+                vs_currency: 'usd',
+                order: 'market_cap_desc',
+                per_page: 250,
+                page: 1,
+                sparkline: false,
+                price_change_percentage: '24h'
+            }
+        });
+        if (!Array.isArray(response.data)) {
+            console.error('CoinGecko: Unexpected response format', response.data);
+            throw new Error('CoinGecko: Unexpected response format');
+        }
+        // Map CoinGecko data to Cryptocurrency interface
+        const now = new Date();
+        return response.data.map((coin: any) => {
+            const addedDate = coin.atl_date ? new Date(coin.atl_date) : now;
+            const ageHours = (now.getTime() - addedDate.getTime()) / (1000 * 60 * 60);
+            return {
+                id: coin.id,
+                name: coin.name,
+                symbol: coin.symbol,
+                price: coin.current_price,
+                current_price: coin.current_price,
+                volume_24h: coin.total_volume ?? 0,
+                market_cap: coin.market_cap ?? 0,
+                price_change_percentage_24h: coin.price_change_percentage_24h ?? 0,
+                age_hours: ageHours,
+                date_added: coin.atl_date || now.toISOString(),
+            };
+        });
+    } catch (error) {
+        console.error('Error fetching from CoinGecko:', error);
+        throw error;
+    }
+};
+
 export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
     try {
         // Fetch data from CoinMarketCap, specifically requesting newest coins first
@@ -161,7 +202,17 @@ export const fetchNewCryptocurrencies = async (): Promise<Cryptocurrency[]> => {
         console.log(`Found ${newCoinsCount} coins less than 24 hours old`);
         
         return processedData;
-    } catch (error) {
+    } catch (error: any) {
+        // Failover logic: detect rate limit/too many requests
+        const msg = error?.message?.toLowerCase() || '';
+        if (
+          error?.response?.status === 429 ||
+          msg.includes('rate limit') ||
+          msg.includes('too many requests')
+        ) {
+            console.warn('[FAILOVER] Too many requests to CoinMarketCap. Fetching new coins from CoinGecko...');
+            return await fetchNewCoinsFromCoinGecko();
+        }
         console.error('Error fetching cryptocurrencies:', error);
         throw error; // Throw the error instead of returning fallback data
     }

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { ExchangeState } from '../types';
 import toast from 'react-hot-toast';
 
-const useExchangeStore = create<ExchangeState>((set) => ({
+const useExchangeStore = create<ExchangeState>((set: (state: ExchangeState | ((state: ExchangeState) => ExchangeState)) => void) => ({
   exchanges: {
     bitvavo: {
       connected: false,
@@ -16,13 +16,13 @@ const useExchangeStore = create<ExchangeState>((set) => ({
     },
   },
   
-  setApiKeys: (exchange, apiKey, apiSecret) => {
+  setApiKeys: (exchange: string, apiKey: string, apiSecret: string) => {
     if (!apiKey || !apiSecret) {
       toast.error('API key and secret are required');
       return;
     }
     
-    set((state) => ({
+    set((state: ExchangeState) => ({
       exchanges: {
         ...state.exchanges,
         [exchange]: {

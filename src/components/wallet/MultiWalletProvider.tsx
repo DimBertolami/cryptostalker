@@ -70,6 +70,52 @@ export const MultiWalletProvider: React.FC<MultiWalletProviderProps> = ({ childr
   const [connectedWallets, setConnectedWallets] = useState<ConnectedWallet[]>([]);
   const [primaryWalletIndex, setPrimaryWalletIndex] = useState<number>(-1);
 
+  // Keep wallet state in sync with adapter events
+  useEffect(() => {
+    const listeners: Array<() => void> = [];
+    walletAdapters.forEach((adapter) => {
+      // Connect event
+      const handleConnect = () => {
+        setConnectedWallets((prev) => {
+          // If already present, update publicKey/connected, else add
+          const idx = prev.findIndex(w => w.adapter.name === adapter.name);
+          if (idx >= 0) {
+            const updated = [...prev];
+            updated[idx] = {
+              ...updated[idx],
+              publicKey: adapter.publicKey,
+              connected: adapter.connected,
+            };
+            return updated;
+          } else {
+            return [
+              ...prev,
+              {
+                adapter,
+                publicKey: adapter.publicKey,
+                connected: adapter.connected,
+              },
+            ];
+          }
+        });
+      };
+      // Disconnect event
+      const handleDisconnect = () => {
+        setConnectedWallets((prev) => prev.filter(w => w.adapter.name !== adapter.name));
+      };
+      adapter.on && adapter.on('connect', handleConnect);
+      adapter.on && adapter.on('disconnect', handleDisconnect);
+      // Cleanup
+      listeners.push(() => {
+        adapter.off && adapter.off('connect', handleConnect);
+        adapter.off && adapter.off('disconnect', handleDisconnect);
+      });
+    });
+    return () => {
+      listeners.forEach((off) => off());
+    };
+  }, [walletAdapters]);
+
   // Connect a wallet by name
   const connectWallet = useCallback(async (walletName: WalletName) => {
     const adapter = walletAdapters.find(adapter => adapter.name === walletName);

@@ -6,6 +6,7 @@ import logging
 import time
 import random
 import requests
+import traceback
 from datetime import datetime, timedelta
 from recent_high_volume import get_recent_cryptos
 from flask_limiter import Limiter
@@ -274,17 +275,370 @@ def delete_exchange_configuration(config_id):
     except Exception as e:
         return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
 
+# Create CCXT Blueprint
+ccxt_bp = Blueprint('ccxt_api', __name__, url_prefix='/api/ccxt')
+
+# Helper function to initialize a CCXT exchange instance with API credentials
+def initialize_ccxt_exchange(exchange_id, api_key=None, secret=None, password=None):
+    """Initialize a CCXT exchange with optional API credentials."""
+    if exchange_id not in ccxt.exchanges:
+        raise ValueError(f"Exchange '{exchange_id}' is not supported by CCXT.")
+    
+    exchange_class = getattr(ccxt, exchange_id)
+    
+    # Initialize with API credentials if provided
+    if api_key and secret:
+        exchange_config = {
+            'apiKey': api_key,
+            'secret': secret,
+        }
+        if password:
+            exchange_config['password'] = password
+            
+        # Add any exchange-specific settings
+        if exchange_id == 'binance':
+            exchange_config['options'] = {'adjustForTimeDifference': True}
+        elif exchange_id == 'kucoin':
+            exchange_config['options'] = {'createMarketBuyOrderRequiresPrice': False}
+            
+        exchange = exchange_class(exchange_config)
+    else:
+        # Initialize without credentials for public endpoints
+        exchange = exchange_class()
+    
+    return exchange
+
+# Helper function to get exchange credentials from the database
+def get_exchange_credentials(exchange_id_name, user_id):
+    """Retrieve and decrypt exchange credentials from the database."""
+    if not supabase:
+        raise ValueError("Supabase client not initialized")
+    
+    try:
+        response = supabase.table('exchange_configurations')\
+            .select('*')\
+            .eq('exchange_id_name', exchange_id_name)\
+            .eq('user_id', user_id)\
+            .single()\
+            .execute()
+        
+        if not response.data:
+            raise ValueError(f"No configuration found for exchange {exchange_id_name}")
+            
+        config = response.data
+        credentials = {
+            'api_key': decrypt_data(config.get('api_key_encrypted', '')),
+            'secret': decrypt_data(config.get('secret_key_encrypted', '')),
+            'password': decrypt_data(config.get('password_encrypted', '')) if config.get('password_encrypted') else None
+        }
+        
+        return credentials
+    except Exception as e:
+        app.logger.error(f"Error retrieving exchange credentials: {str(e)}")
+        raise
+
+# Error handling wrapper for CCXT operations
+def handle_ccxt_errors(func):
+    """Decorator to handle common CCXT errors with appropriate HTTP responses."""
+    from functools import wraps
+    
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except ValueError as e:
+            app.logger.error(f"Value Error: {str(e)}")
+            return jsonify({"error": str(e)}), 400
+        except ccxt.AuthenticationError as e:
+            app.logger.error(f"Authentication Error: {str(e)}")
+            return jsonify({"error": "Authentication failed. Check your API credentials.", "details": str(e)}), 401
+        except ccxt.InsufficientFunds as e:
+            app.logger.error(f"Insufficient Funds Error: {str(e)}")
+            return jsonify({"error": "Insufficient funds for this operation.", "details": str(e)}), 400
+        except ccxt.InvalidOrder as e:
+            app.logger.error(f"Invalid Order Error: {str(e)}")
+            return jsonify({"error": "Invalid order parameters.", "details": str(e)}), 400
+        except ccxt.ExchangeError as e:
+            app.logger.error(f"Exchange Error: {str(e)}")
+            return jsonify({"error": "Exchange error occurred.", "details": str(e)}), 500
+        except ccxt.NetworkError as e:
+            app.logger.error(f"Network Error: {str(e)}")
+            return jsonify({"error": "Network error connecting to exchange.", "details": str(e)}), 503
+        except ccxt.ExchangeNotAvailable as e:
+            app.logger.error(f"Exchange Not Available Error: {str(e)}")
+            return jsonify({"error": "Exchange is not available at this time.", "details": str(e)}), 503
+        except ccxt.RequestTimeout as e:
+            app.logger.error(f"Request Timeout Error: {str(e)}")
+            return jsonify({"error": "Request to exchange timed out.", "details": str(e)}), 504
+        except Exception as e:
+            app.logger.error(f"Unexpected error: {str(e)}")
+            tb = traceback.format_exc()
+            app.logger.error(f"Traceback: {tb}")
+            return jsonify({
+                "error": "An unexpected error occurred.", 
+                "details": str(e),
+                "traceback": tb if DEBUG_MODE else "Enable DEBUG_MODE for traceback"
+            }), 500
+    
+    return wrapper
+
+@ccxt_bp.route('/balance', methods=['GET'])
+@handle_ccxt_errors
+def get_exchange_balance():
+    """Retrieve balance from a specific exchange."""
+    exchange_id = request.args.get('exchange_id')
+    if not exchange_id:
+        return jsonify({"error": "Missing 'exchange_id' parameter"}), 400
+    
+    try:
+        user_id = get_current_user_id_placeholder()
+    except (NotImplementedError, ValueError) as e:
+        return jsonify({"error": str(e)}), 401
+    
+    try:
+        # Get credentials from database
+        credentials = get_exchange_credentials(exchange_id, user_id)
+        
+        # Initialize exchange with credentials
+        exchange = initialize_ccxt_exchange(
+            exchange_id, 
+            credentials['api_key'], 
+            credentials['secret'], 
+            credentials['password']
+        )
+        
+        # Fetch balance
+        balance = exchange.fetch_balance()
+        
+        # Format the response to include only relevant information
+        formatted_balance = {
+            'total': {},      # Total balance (free + used)
+            'free': {},      # Available balance
+            'used': {},      # Balance in open orders or otherwise unavailable
+            'timestamp': balance.get('timestamp', int(time.time() * 1000)),
+            'datetime': balance.get('datetime', datetime.now().isoformat())
+        }
+        
+        # Only include currencies with non-zero balances
+        for currency, amount in balance.get('total', {}).items():
+            if amount > 0:
+                formatted_balance['total'][currency] = amount
+                formatted_balance['free'][currency] = balance.get('free', {}).get(currency, 0)
+                formatted_balance['used'][currency] = balance.get('used', {}).get(currency, 0)
+        
+        return jsonify({
+            "exchange_id": exchange_id,
+            "balance": formatted_balance
+        })
+    
+    except Exception as e:
+        # This will be caught by the handle_ccxt_errors decorator
+        raise
+
+@ccxt_bp.route('/create_order', methods=['POST'])
+@handle_ccxt_errors
+def create_exchange_order():
+    """Create an order on a specific exchange."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON payload"}), 400
+    
+    # Required parameters
+    required_fields = ['exchange_id', 'symbol', 'type', 'side', 'amount']
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": f"Missing one or more required fields: {', '.join(required_fields)}"}), 400
+    
+    exchange_id = data['exchange_id']
+    symbol = data['symbol']        # e.g., 'BTC/USDT'
+    order_type = data['type']      # 'market' or 'limit'
+    side = data['side']            # 'buy' or 'sell'
+    amount = float(data['amount']) # Base currency amount
+    
+    # Optional parameters
+    price = float(data['price']) if 'price' in data and data['price'] is not None else None
+    params = data.get('params', {}) # Additional exchange-specific parameters
+    
+    try:
+        user_id = get_current_user_id_placeholder()
+    except (NotImplementedError, ValueError) as e:
+        return jsonify({"error": str(e)}), 401
+    
+    try:
+        # Get credentials from database
+        credentials = get_exchange_credentials(exchange_id, user_id)
+        
+        # Initialize exchange with credentials
+        exchange = initialize_ccxt_exchange(
+            exchange_id, 
+            credentials['api_key'], 
+            credentials['secret'], 
+            credentials['password']
+        )
+        
+        # Load markets to ensure symbol is valid
+        exchange.load_markets()
+        
+        # Validate order type
+        if order_type not in ['market', 'limit']:
+            return jsonify({"error": f"Invalid order type: {order_type}. Must be 'market' or 'limit'."}), 400
+        
+        # Validate side
+        if side not in ['buy', 'sell']:
+            return jsonify({"error": f"Invalid side: {side}. Must be 'buy' or 'sell'."}), 400
+        
+        # Validate symbol
+        if symbol not in exchange.markets:
+            return jsonify({"error": f"Invalid symbol: {symbol}. Not available on {exchange_id}."}), 400
+        
+        # For limit orders, price is required
+        if order_type == 'limit' and price is None:
+            return jsonify({"error": "Price is required for limit orders."}), 400
+        
+        # Create the order
+        if order_type == 'market':
+            order = exchange.create_market_order(symbol, side, amount, price, params)
+        else:  # limit order
+            order = exchange.create_limit_order(symbol, side, amount, price, params)
+        
+        return jsonify({
+            "exchange_id": exchange_id,
+            "order": order
+        })
+    
+    except Exception as e:
+        # This will be caught by the handle_ccxt_errors decorator
+        raise
+
+@ccxt_bp.route('/open_orders', methods=['GET'])
+@handle_ccxt_errors
+def get_open_orders():
+    """Retrieve open orders from a specific exchange."""
+    exchange_id = request.args.get('exchange_id')
+    symbol = request.args.get('symbol')  # Optional: filter by symbol
+    
+    if not exchange_id:
+        return jsonify({"error": "Missing 'exchange_id' parameter"}), 400
+    
+    try:
+        user_id = get_current_user_id_placeholder()
+    except (NotImplementedError, ValueError) as e:
+        return jsonify({"error": str(e)}), 401
+    
+    try:
+        # Get credentials from database
+        credentials = get_exchange_credentials(exchange_id, user_id)
+        
+        # Initialize exchange with credentials
+        exchange = initialize_ccxt_exchange(
+            exchange_id, 
+            credentials['api_key'], 
+            credentials['secret'], 
+            credentials['password']
+        )
+        
+        # Fetch open orders
+        open_orders = exchange.fetch_open_orders(symbol)
+        
+        return jsonify({
+            "exchange_id": exchange_id,
+            "symbol": symbol if symbol else "all",
+            "open_orders": open_orders
+        })
+    
+    except Exception as e:
+        # This will be caught by the handle_ccxt_errors decorator
+        raise
+
+@ccxt_bp.route('/cancel_order', methods=['POST'])
+@handle_ccxt_errors
+def cancel_exchange_order():
+    """Cancel an order on a specific exchange."""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON payload"}), 400
+    
+    # Required parameters
+    required_fields = ['exchange_id', 'order_id']
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": f"Missing one or more required fields: {', '.join(required_fields)}"}), 400
+    
+    exchange_id = data['exchange_id']
+    order_id = data['order_id']
+    symbol = data.get('symbol')  # Optional but recommended for some exchanges
+    
+    try:
+        user_id = get_current_user_id_placeholder()
+    except (NotImplementedError, ValueError) as e:
+        return jsonify({"error": str(e)}), 401
+    
+    try:
+        # Get credentials from database
+        credentials = get_exchange_credentials(exchange_id, user_id)
+        
+        # Initialize exchange with credentials
+        exchange = initialize_ccxt_exchange(
+            exchange_id, 
+            credentials['api_key'], 
+            credentials['secret'], 
+            credentials['password']
+        )
+        
+        # Cancel the order
+        result = exchange.cancel_order(order_id, symbol)
+        
+        return jsonify({
+            "exchange_id": exchange_id,
+            "order_id": order_id,
+            "result": result
+        })
+    
+    except Exception as e:
+        # This will be caught by the handle_ccxt_errors decorator
+        raise
+
 # Register Blueprints
 app.register_blueprint(exchange_configurations_bp)
+app.register_blueprint(ccxt_bp)
 
 # --- Price Endpoint ---
 @app.route('/api/price/<string:symbol>', methods=['GET'])
 @limiter.limit("10/minute") # Example rate limit: 10 requests per minute per IP
 @cache.cached(timeout=60)    # Cache results for 60 seconds
 def get_price(symbol):
+    source = request.args.get('source', 'coinmarketcap').lower()
+    if source not in ['coinmarketcap', 'coingecko']:
+        return jsonify({"error": f"Unsupported price source: {source}"}), 400
+
+    if source == 'coingecko':
+        # Try CoinGecko
+        try:
+            # CoinGecko uses IDs, not symbols, but for common coins symbol works
+            url = f'https://api.coingecko.com/api/v3/coins/markets'
+            params = {
+                'vs_currency': 'usd',
+                'ids': '',
+                'symbols': symbol.lower(),
+            }
+            # Try by symbol first
+            response = requests.get(url, params={'vs_currency': 'usd', 'ids': '', 'symbols': symbol.lower()})
+            data = response.json()
+            if isinstance(data, list) and len(data) > 0:
+                price = data[0]['current_price']
+                return jsonify({"symbol": symbol.upper(), "price": price})
+            # If not found, fallback to search by id
+            url2 = f'https://api.coingecko.com/api/v3/coins/{symbol.lower()}'
+            response2 = requests.get(url2)
+            if response2.status_code == 200:
+                data2 = response2.json()
+                price = data2['market_data']['current_price']['usd']
+                return jsonify({"symbol": symbol.upper(), "price": price})
+            return jsonify({"error": f"CoinGecko: No data found for symbol {symbol}"}), 404
+        except Exception as e:
+            current_app.logger.error(f"CoinGecko error fetching price for {symbol}: {e}")
+            return jsonify({"error": f"CoinGecko error: {str(e)}"}), 500
+    # Default: CoinMarketCap
     if not API_KEY:
         return jsonify({"error": "CoinMarketCap API key not configured"}), 500
-
     headers = {
         'Accepts': 'application/json',
         'X-CMC_PRO_API_KEY': API_KEY,
@@ -294,23 +648,17 @@ def get_price(symbol):
         'convert': 'USD' # Or any other currency you prefer
     }
     url = COINMARKETCAP_API + 'cryptocurrency/quotes/latest'
-
     try:
         response = requests.get(url, headers=headers, params=params)
         response.raise_for_status() # Raises an HTTPError for bad responses (4XX or 5XX)
         data = response.json()
-
         if data['status']['error_code'] != 0:
             return jsonify({"error": "CoinMarketCap API error", "details": data['status']['error_message']}), 500
-
         if symbol.upper() not in data['data']:
             return jsonify({"error": f"Data for symbol {symbol.upper()} not found in CoinMarketCap response"}), 404
-            
         price = data['data'][symbol.upper()]['quote']['USD']['price']
         return jsonify({"symbol": symbol.upper(), "price": price})
-    
     except requests.exceptions.HTTPError as http_err:
-        # Attempt to parse error from CoinMarketCap if possible
         try:
             error_details = response.json().get('status', {}).get('error_message', str(http_err))
         except ValueError:
