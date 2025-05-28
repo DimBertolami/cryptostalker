@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import useCryptoStore from '../store/useCryptoStore';
 import { Cryptocurrency } from '../types';
 import toast from 'react-hot-toast';
+import { formatCurrency } from '../utils/formatters';
 
 const NewCryptosTable: React.FC = () => {
   const { newCryptos, cryptos, loading, isAutoTrading, buyManual, sellManual, setShowAllCryptos } = useCryptoStore();
@@ -123,6 +124,9 @@ const NewCryptosTable: React.FC = () => {
         default: return true;
       }
     });
+
+    // Filter out coins with zero or negligible market cap
+    result = result.filter(coin => getMarketCap(coin) >= 1);
 
     // Sorting
     result = [...result].sort((a, b) => {
@@ -269,10 +273,10 @@ const NewCryptosTable: React.FC = () => {
                     {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
                   </td>
                   <td className="px-3 py-4 whitespace-nowrap text-sm text-white">
-                    ${(marketCap / 1000000).toFixed(2)}M
+                    {formatCurrency(marketCap)}
                   </td>
                   <td className="px-3 py-4 whitespace-nowrap text-sm text-white">
-                    ${(volume / 1000).toFixed(1)}K
+                    {formatCurrency(volume)}
                   </td>
                   <td className="px-3 py-4 whitespace-nowrap text-sm text-white">
                     {ageHours.toFixed(1)}h

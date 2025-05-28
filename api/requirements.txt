@@ -8,3 +8,5 @@ gevent
 python-bitvavo-api
 ccxt
 python-dotenv
+supabase
+cryptography

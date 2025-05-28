@@ -1,7 +1,8 @@
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, request, jsonify, Blueprint, current_app, send_from_directory
 from flask_cors import CORS
 import os
 import json
+import logging
 import time
 import random
 import requests
@@ -11,31 +12,42 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
 from dotenv import load_dotenv
-import ccxt
 
-# Load environment variables
+# Load environment variables first
 try:
     load_dotenv()
 except Exception as e:
     print(f"Warning: Could not load .env file: {e}")
+import ccxt
+from supabase import create_client, Client
+from flask import Blueprint
+from api.utils.encryption import encrypt_data, decrypt_data
+
+# Supabase Configuration
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+    print("Warning: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not found in environment variables.")
+    # Depending on your app's needs, you might want to exit or disable Supabase features.
+    supabase: Client = None
+else:
+    try:
+        supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        print("Successfully connected to Supabase with service role key.")
+    except Exception as e:
+        print(f"Error connecting to Supabase: {e}")
+        supabase: Client = None
 
 # Create the Flask app
-app = Flask(__name__, static_folder='../dist')
+app = Flask(__name__)
+app.logger.setLevel(logging.INFO)
+app.config['static_folder'] = '../dist'
 
-# Enable CORS for all routes with a more permissive configuration
-CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"]}})
+# Enable CORS specifically for the frontend origin
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173", "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"], "allow_headers": ["Content-Type", "Authorization", "X-User-Id", "X-Requested-With", "Accept"], "supports_credentials": True}})
 
-# Add CORS headers to all responses
-@app.after_request
-def add_cors_headers(response):
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept,X-Requested-With')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-    response.headers.add('Access-Control-Max-Age', '3600')
-    # Handle preflight OPTIONS requests
-    if request.method == 'OPTIONS':
-        response.status_code = 204
-    return response
+
 
 # Configure rate limiting and caching
 #     "/api/*": {
@@ -67,6 +79,254 @@ print(f"Using CoinMarketCap API key: {API_KEY[:5]}...{API_KEY[-5:]}")
 
 # Add a flag to enable/disable detailed logging
 DEBUG_MODE = True
+
+# --- Exchange Configurations Blueprint ---
+exchange_configurations_bp = Blueprint('exchange_configurations_api', __name__, url_prefix='/api/exchange-configurations')
+
+# Placeholder for getting user_id from authenticated session (e.g., JWT)
+# THIS IS NOT SECURE FOR PRODUCTION. Replace with actual JWT auth.
+def get_current_user_id_placeholder():
+    # Option 1: For testing, get from a custom header (e.g., "X-User-Id")
+    # The frontend/Postman should send a header: X-User-Id: your-actual-user-uuid
+    user_id = request.headers.get("X-User-Id") # Get the header named "X-User-Id"
+    if not user_id:
+        # It's good practice to specify which header was expected in the error.
+        raise ValueError("Required 'X-User-Id' header is missing for testing.")
+    return user_id # The value of this header will be the user's UUID
+    # Option 2: For backend-only testing, hardcode a test user_id from your auth.users table
+    # return "905bdb52-190f-442d-8a96-bd777c3b5120" # Example UUID
+    # Option 3: Raise error until auth is implemented (commented out for Option 1 to work)
+    # raise NotImplementedError("User authentication not implemented. Cannot get user_id.")
+
+@exchange_configurations_bp.route('/', methods=['POST'])
+def create_exchange_configuration():
+    if not supabase:
+        return jsonify({"error": "Supabase client not initialized"}), 500
+    try:
+        user_id = get_current_user_id_placeholder() # Replace with actual user ID from auth
+    except (NotImplementedError, ValueError) as e:
+        return jsonify({"error": str(e)}), 401
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON payload"}), 400
+
+    required_fields = ['exchange_id_name', 'api_key', 'api_secret']
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": f"Missing one or more required fields: {', '.join(required_fields)}"}), 400
+
+    try:
+        new_config = {
+            "user_id": user_id,
+            "exchange_id_name": data['exchange_id_name'],
+            "nickname": data.get('nickname'),
+            "api_key_encrypted": encrypt_data(data['api_key']),
+            "secret_key_encrypted": encrypt_data(data['api_secret']),
+            "password_encrypted": encrypt_data(data['password']) if data.get('password') else None,
+        }
+        current_app.logger.info(f"Attempting to insert new_config: {new_config}") # Cascade Debug Log
+        response = supabase.table('exchange_configurations').insert(new_config).execute()
+        
+        if response.data:
+            return jsonify(response.data[0]), 201
+        elif response.error:
+            return jsonify({"error": "Failed to create exchange configuration", "details": response.error.message}), 500
+        else:
+            return jsonify({"error": "Failed to create exchange configuration", "details": "Unknown error"}), 500
+
+    except Exception as e:
+        return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
+
+@exchange_configurations_bp.route('/', methods=['GET'])
+def get_exchange_configurations_list():
+    if not supabase:
+        return jsonify({"error": "Supabase client not initialized"}), 500
+    try:
+        user_id = get_current_user_id_placeholder() # Replace with actual user ID from auth
+    except (NotImplementedError, ValueError) as e:
+        return jsonify({"error": str(e)}), 401
+
+    try:
+        response = supabase.table('exchange_configurations')\
+            .select('id, user_id, exchange_id_name, nickname, created_at, updated_at')\
+            .eq('user_id', user_id)\
+            .execute()
+        
+        if response.data:
+            return jsonify(response.data)
+        elif response.error:
+            return jsonify({"error": "Failed to fetch exchange configurations", "details": response.error.message}), 500
+        else:
+            return jsonify([]) # Return empty list if no error but no data
+            
+    except Exception as e:
+        return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
+
+@exchange_configurations_bp.route('/<uuid:config_id>', methods=['GET'])
+def get_single_exchange_configuration(config_id):
+    if not supabase:
+        return jsonify({"error": "Supabase client not initialized"}), 500
+    try:
+        user_id = get_current_user_id_placeholder() # Replace with actual user ID from auth
+    except (NotImplementedError, ValueError) as e:
+        return jsonify({"error": str(e)}), 401
+
+    try:
+        response = supabase.table('exchange_configurations')\
+            .select('*')\
+            .eq('id', str(config_id))\
+            .eq('user_id', user_id)\
+            .single()\
+            .execute()
+
+        if response.data:
+            config = response.data
+            # Decrypt sensitive fields
+            config['api_key'] = decrypt_data(config.pop('api_key_encrypted', ''))
+            config['secret_key'] = decrypt_data(config.pop('secret_key_encrypted', ''))
+            if 'password_encrypted' in config and config['password_encrypted']:
+                config['password'] = decrypt_data(config.pop('password_encrypted'))
+            else:
+                config.pop('password_encrypted', None) # remove if None or empty
+                config['password'] = None
+            return jsonify(config)
+        elif response.error:
+             # Check if error is due to 'PGRST116' (0 rows) which means not found or not authorized
+            if response.error.code == 'PGRST116': 
+                return jsonify({"error": "Exchange configuration not found or access denied"}), 404
+            return jsonify({"error": "Failed to fetch exchange configuration", "details": response.error.message}), 500
+        else: # Should not happen with .single() if no error, but as a fallback
+            return jsonify({"error": "Exchange configuration not found"}), 404
+            
+    except Exception as e:
+        return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
+
+@exchange_configurations_bp.route('/<uuid:config_id>', methods=['PUT'])
+def update_exchange_configuration(config_id):
+    if not supabase:
+        return jsonify({"error": "Supabase client not initialized"}), 500
+    try:
+        user_id = get_current_user_id_placeholder() # Replace with actual user ID from auth
+    except (NotImplementedError, ValueError) as e:
+        return jsonify({"error": str(e)}), 401
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid JSON payload"}), 400
+
+    update_payload = {}
+    if 'nickname' in data: update_payload['nickname'] = data['nickname']
+    if 'exchange_id_name' in data: update_payload['exchange_id_name'] = data['exchange_id_name'] # usually not changed but possible
+    if 'api_key' in data: update_payload['api_key_encrypted'] = encrypt_data(data['api_key'])
+    if 'secret_key' in data: update_payload['secret_key_encrypted'] = encrypt_data(data['secret_key'])
+    if 'password' in data: # handles empty string for password removal or new password
+        update_payload['password_encrypted'] = encrypt_data(data['password']) if data['password'] else None
+    
+    if not update_payload:
+        return jsonify({"error": "No update fields provided"}), 400
+    
+    update_payload['updated_at'] = 'now()' # Let Supabase handle the timestamp
+
+    try:
+        response = supabase.table('exchange_configurations')\
+            .update(update_payload)\
+            .eq('id', str(config_id))\
+            .eq('user_id', user_id)\
+            .execute()
+
+        if response.data:
+            return jsonify(response.data[0]), 200
+        elif response.error:
+            if response.error.code == 'PGRST116': # Not found or RLS prevented update
+                 return jsonify({"error": "Exchange configuration not found or update failed due to permissions"}), 404
+            return jsonify({"error": "Failed to update exchange configuration", "details": response.error.message}), 500
+        else: # No data and no error might mean RLS prevented update without erroring explicitly, or 0 rows matched
+            return jsonify({"error": "Update did not affect any rows. Configuration not found or no changes made."}), 404
+
+    except Exception as e:
+        return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
+
+@exchange_configurations_bp.route('/<uuid:config_id>', methods=['DELETE'])
+def delete_exchange_configuration(config_id):
+    if not supabase:
+        return jsonify({"error": "Supabase client not initialized"}), 500
+    try:
+        user_id = get_current_user_id_placeholder() # Replace with actual user ID from auth
+    except (NotImplementedError, ValueError) as e:
+        return jsonify({"error": str(e)}), 401
+
+    try:
+        response = supabase.table('exchange_configurations')\
+            .delete()\
+            .eq('id', str(config_id))\
+            .eq('user_id', user_id)\
+            .execute()
+
+        if response.data:
+            return jsonify({"message": "Exchange configuration deleted successfully"}), 200
+        elif response.error:
+            if response.error.code == 'PGRST116': # Not found or RLS prevented delete
+                 return jsonify({"error": "Exchange configuration not found or delete failed due to permissions"}), 404
+            return jsonify({"error": "Failed to delete exchange configuration", "details": response.error.message}), 500
+        else: # No data and no error might mean RLS prevented delete or 0 rows matched
+            return jsonify({"message": "Exchange configuration not found or no action taken."}), 404
+            
+    except Exception as e:
+        return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
+
+# Register Blueprints
+app.register_blueprint(exchange_configurations_bp)
+
+# --- Price Endpoint ---
+@app.route('/api/price/<string:symbol>', methods=['GET'])
+@limiter.limit("10/minute") # Example rate limit: 10 requests per minute per IP
+@cache.cached(timeout=60)    # Cache results for 60 seconds
+def get_price(symbol):
+    if not API_KEY:
+        return jsonify({"error": "CoinMarketCap API key not configured"}), 500
+
+    headers = {
+        'Accepts': 'application/json',
+        'X-CMC_PRO_API_KEY': API_KEY,
+    }
+    params = {
+        'symbol': symbol.upper(),
+        'convert': 'USD' # Or any other currency you prefer
+    }
+    url = COINMARKETCAP_API + 'cryptocurrency/quotes/latest'
+
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status() # Raises an HTTPError for bad responses (4XX or 5XX)
+        data = response.json()
+
+        if data['status']['error_code'] != 0:
+            return jsonify({"error": "CoinMarketCap API error", "details": data['status']['error_message']}), 500
+
+        if symbol.upper() not in data['data']:
+            return jsonify({"error": f"Data for symbol {symbol.upper()} not found in CoinMarketCap response"}), 404
+            
+        price = data['data'][symbol.upper()]['quote']['USD']['price']
+        return jsonify({"symbol": symbol.upper(), "price": price})
+    
+    except requests.exceptions.HTTPError as http_err:
+        # Attempt to parse error from CoinMarketCap if possible
+        try:
+            error_details = response.json().get('status', {}).get('error_message', str(http_err))
+        except ValueError:
+            error_details = str(http_err)
+        current_app.logger.error(f"HTTP error fetching price for {symbol}: {error_details}")
+        return jsonify({"error": f"CoinMarketCap API request failed: {error_details}"}), response.status_code
+    except requests.exceptions.RequestException as req_err:
+        current_app.logger.error(f"Request error fetching price for {symbol}: {req_err}")
+        return jsonify({"error": f"Error connecting to CoinMarketCap: {str(req_err)}"}), 503
+    except KeyError as key_err:
+        current_app.logger.error(f"KeyError parsing CoinMarketCap response for {symbol}: {key_err} - Data: {data}")
+        return jsonify({"error": "Error parsing price data from CoinMarketCap"}), 500
+    except Exception as e:
+        current_app.logger.error(f"Unexpected error fetching price for {symbol}: {e}")
+        return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
+# Add other blueprints here if you create more
 
 @app.route("/api/new-cryptos")
 def new_cryptos():

@@ -18,9 +18,36 @@ npm install
 # Wait for ports to be released
 sleep 2
 
-# Start the Flask backend server
+# Setup Python Virtual Environment for API and Install Dependencies
+API_VENV_DIR="$PROJECT_DIR/api_venv"
+echo "\n[*] Setting up Python virtual environment for API..."
+
+if [ ! -d "$API_VENV_DIR" ]; then
+    echo "Creating virtual environment in $API_VENV_DIR..."
+    python3 -m venv "$API_VENV_DIR"
+    if [ $? -ne 0 ]; then
+        echo "❌ Failed to create virtual environment. Please ensure python3-venv is installed."
+        exit 1
+    fi
+fi
+
+echo "Activating virtual environment and installing/updating dependencies..."
+# shellcheck source=/dev/null
+source "$API_VENV_DIR/bin/activate"
+
+"$API_VENV_DIR/bin/pip" install --upgrade pip > /dev/null
+"$API_VENV_DIR/bin/pip" install -r "$PROJECT_DIR/api/requirements.txt"
+if [ $? -ne 0 ]; then
+    echo "❌ Failed to install Python dependencies from api/requirements.txt."
+    deactivate
+    exit 1
+fi
+
+# Start the Flask backend server using the virtual environment's Python
 echo "\n[3/5] Starting Flask backend server..."
-python3 api/server.py > ./api-server.log 2>&1 &
+PYTHONPATH="$PROJECT_DIR" "$API_VENV_DIR/bin/python3" "$PROJECT_DIR/api/server.py" > "$PROJECT_DIR/api-server.log" 2>&1 &
+# Deactivate should happen when the script or server stops, or manage in shutdown.sh
+# For now, the subshell running the server will use the venv.
 BACKEND_PID=$!
 echo "Backend started with PID: $BACKEND_PID"
 
