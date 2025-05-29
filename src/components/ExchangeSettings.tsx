@@ -59,19 +59,77 @@ const ExchangeSettings: React.FC = () => {
   
   return (
     <div className="p-4">
-      <div className="flex items-center mb-4">
-        <h2 className="text-xl font-semibold text-white">Exchange Settings</h2>
-        <div className="ml-4 px-2 py-1 bg-background rounded-full border border-neutral-700">
-          <div className="flex items-center gap-4">
-            <span className="text-xs text-neutral-400">Configure Exchanges:</span>
-            <div className="flex gap-2">
-              <button onClick={handleNewExchange} className="px-2 py-1 text-xs rounded bg-green-500 hover:bg-green-600 text-white">New</button>
-              <button onClick={handleEdit} className="px-2 py-1 text-xs rounded bg-blue-500 hover:bg-blue-600 text-white">Edit</button>
-              <button onClick={handleDelete} className="px-2 py-1 text-xs rounded bg-red-500 hover:bg-red-600 text-white">Delete</button>
+      <div className="space-y-6">
+        <div className="flex items-center mb-4">
+          <h2 className="text-xl font-semibold text-white">Exchange Settings</h2>
+          <div className="ml-4 px-2 py-1 bg-background rounded-full border border-neutral-700">
+            <div className="flex items-center gap-4">
+              <span className="text-xs text-neutral-400">Configure Exchanges:</span>
+              <div className="flex gap-2">
+                <button onClick={handleNewExchange} className="px-2 py-1 text-xs rounded bg-green-500 hover:bg-green-600 text-white">New</button>
+                <button onClick={handleEdit} className="px-2 py-1 text-xs rounded bg-blue-500 hover:bg-blue-600 text-white">Edit</button>
+                <button onClick={handleDelete} className="px-2 py-1 text-xs rounded bg-red-500 hover:bg-red-600 text-white">Delete</button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+
+        {showNewForm && (
+          <form onSubmit={handleFormSubmit} className="mb-4 p-4 bg-background rounded-lg border border-neutral-700">
+            <h3 className="text-lg font-medium text-white mb-4">Add New Exchange</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-neutral-400 mb-1">API Key</label>
+                <input
+                  type="text"
+                  value={formData.apiKey}
+                  onChange={(e) => setFormData({...formData, apiKey: e.target.value})}
+                  className="w-full px-3 py-2 bg-neutral-800 rounded border border-neutral-600 text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-400 mb-1">API Secret</label>
+                <input
+                  type="password"
+                  value={formData.apiSecret}
+                  onChange={(e) => setFormData({...formData, apiSecret: e.target.value})}
+                  className="w-full px-3 py-2 bg-neutral-800 rounded border border-neutral-600 text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-400 mb-1">URL (Optional)</label>
+                <input
+                  type="text"
+                  value={formData.url}
+                  onChange={(e) => setFormData({...formData, url: e.target.value})}
+                  className="w-full px-3 py-2 bg-neutral-800 rounded border border-neutral-600 text-white"
+                />
+              </div>
+              <div className="mt-2 flex items-center text-sm text-neutral-400">
+                <Shield className="h-5 w-5 text-primary mr-2" />
+                <p>Your API keys are stored securely in your browser's local storage and are never sent to our servers.</p>
+              </div>
+              <div className="flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNewForm(false);
+                    setFormData({ name: '', apiKey: '', apiSecret: '', url: '' });
+                  }}
+                  className="px-4 py-2 rounded-md text-white bg-neutral-700 hover:bg-neutral-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-md text-white bg-primary hover:bg-primary-dark"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
 
       {showNewForm && (
         <form onSubmit={handleFormSubmit} className="mb-4 p-4 bg-background rounded-lg border border-neutral-700">
@@ -167,8 +225,8 @@ const ExchangeSettings: React.FC = () => {
                     <input
                       id="bitvavo-api-key"
                       type="text"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
+                      value={formData.apiKey}
+                      onChange={(e) => setFormData({...formData, apiKey: e.target.value})}
                       placeholder="Enter your Bitvavo API key"
                       className="w-full px-3 py-2 bg-background border border-neutral-600 rounded-md text-white focus:outline-none focus:ring-1 focus:ring-primary"
                     />
@@ -178,8 +236,8 @@ const ExchangeSettings: React.FC = () => {
                     <input
                       id="bitvavo-api-secret"
                       type="password"
-                      value={apiSecret}
-                      onChange={(e) => setApiSecret(e.target.value)}
+                      value={formData.apiSecret}
+                      onChange={(e) => setFormData({...formData, apiSecret: e.target.value})}
                       placeholder="Enter your Bitvavo API secret"
                       className="w-full px-3 py-2 bg-background border border-neutral-600 rounded-md text-white focus:outline-none focus:ring-1 focus:ring-primary"
                     />
@@ -192,6 +250,21 @@ const ExchangeSettings: React.FC = () => {
                       Cancel
                     </button>
                     <button
+                      onClick={handleSave}
+                      disabled={!formData.apiKey || !formData.apiSecret}
+                      className={clsx(
+                        "px-4 py-2 rounded-md font-medium transition-colors",
+                        formData.apiKey && formData.apiSecret
+                          ? "bg-primary hover:bg-primary-dark text-white"
+                          : "bg-neutral-700 text-neutral-400 cursor-not-allowed"
+                      )}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           
           {/* Binance */}
@@ -405,7 +478,7 @@ const ExchangeSettings: React.FC = () => {
                   type="text"
                   value={formData.apiKey}
                   onChange={(e) => setFormData({...formData, apiKey: e.target.value})}
-                  placeholder={`Enter your ${activeExchange.charAt(0).toUpperCase() + activeExchange.slice(1)} API key`}
+                  placeholder={`Enter your ${activeExchange?.charAt(0).toUpperCase()}${activeExchange?.slice(1) || ''} API key`}
                   className="w-full px-3 py-2 bg-background border border-neutral-600 rounded-md text-white focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
@@ -416,7 +489,7 @@ const ExchangeSettings: React.FC = () => {
                   type="password"
                   value={formData.apiSecret}
                   onChange={(e) => setFormData({...formData, apiSecret: e.target.value})}
-                  placeholder={`Enter your ${activeExchange.charAt(0).toUpperCase() + activeExchange.slice(1)} API secret`}
+                  placeholder={`Enter your ${activeExchange?.charAt(0).toUpperCase()}${activeExchange?.slice(1) || ''} API secret`}
                   className="w-full px-3 py-2 bg-background border border-neutral-600 rounded-md text-white focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
@@ -458,36 +531,118 @@ const ExchangeSettings: React.FC = () => {
             </div>
           </div>
         )}
-      </div>
 
-      <div className="bg-background border border-neutral-700 rounded-lg p-4">
-        <h3 className="font-medium text-white mb-2">Trading Permissions</h3>
-        <p className="text-sm text-neutral-400 mb-4">Make sure your API keys have the appropriate permissions enabled:</p>
-        
-        <div className="space-y-2">
-          <div className="flex items-start">
-            <div className="flex-shrink-0 mt-0.5">
-              <Check className="h-4 w-4 text-success" />
+        <div className="bg-background border border-neutral-700 rounded-lg p-4">
+          <h3 className="font-medium text-white mb-2">Trading Permissions</h3>
+          <p className="text-sm text-neutral-400 mb-4">Make sure your API keys have the appropriate permissions enabled:</p>
+          
+          <div className="space-y-2">
+            <div className="flex items-start">
+              <div className="flex-shrink-0 mt-0.5">
+                <Check className="h-4 w-4 text-success" />
+              </div>
+              <p className="ml-2 text-sm text-neutral-300">Read account information and balances</p>
             </div>
-            <p className="ml-2 text-sm text-neutral-300">Read account information and balances</p>
-          </div>
-          <div className="flex items-start">
-            <div className="flex-shrink-0 mt-0.5">
-              <Check className="h-4 w-4 text-success" />
+            <div className="flex items-start">
+              <div className="flex-shrink-0 mt-0.5">
+                <Check className="h-4 w-4 text-success" />
+              </div>
+              <p className="ml-2 text-sm text-neutral-300">Spot trading (place and cancel orders)</p>
             </div>
-            <p className="ml-2 text-sm text-neutral-300">Spot trading (place and cancel orders)</p>
-          </div>
-          <div className="flex items-start">
-            <div className="flex-shrink-0 mt-0.5">
-              <X className="h-4 w-4 text-error" />
+            <div className="flex items-start">
+              <div className="flex-shrink-0 mt-0.5">
+                <X className="h-4 w-4 text-error" />
+              </div>
+              <p className="ml-2 text-sm text-neutral-300">Do NOT enable withdrawals for security reasons</p>
             </div>
-            <p className="ml-2 text-sm text-neutral-300">Do NOT enable withdrawals for security reasons</p>
           </div>
         </div>
+
+        {showEditForm && (
+          <form onSubmit={handleFormSubmit} className="mb-4 p-4 bg-background rounded-lg border border-neutral-700">
+            <h3 className="text-lg font-medium text-white mb-4">Edit Exchange Settings</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-neutral-400 mb-1">API Key</label>
+                <input
+                  type="text"
+                  value={formData.apiKey}
+                  onChange={(e) => setFormData({...formData, apiKey: e.target.value})}
+                  className="w-full px-3 py-2 bg-neutral-800 rounded border border-neutral-600 text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-400 mb-1">API Secret</label>
+                <input
+                  type="password"
+                  value={formData.apiSecret}
+                  onChange={(e) => setFormData({...formData, apiSecret: e.target.value})}
+                  className="w-full px-3 py-2 bg-neutral-800 rounded border border-neutral-600 text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-400 mb-1">URL (Optional)</label>
+                <input
+                  type="text"
+                  value={formData.url}
+                  onChange={(e) => setFormData({...formData, url: e.target.value})}
+                  className="w-full px-3 py-2 bg-neutral-800 rounded border border-neutral-600 text-white"
+                />
+              </div>
+              <div className="mt-2 flex items-center text-sm text-neutral-400">
+                <Shield className="h-5 w-5 text-primary mr-2" />
+                <p>Your API keys are stored securely in your browser's local storage and are never sent to our servers.</p>
+              </div>
+              <div className="flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditForm(false);
+                    setFormData({ name: '', apiKey: '', apiSecret: '', url: '' });
+                  }}
+                  className="px-4 py-2 rounded-md text-white bg-neutral-700 hover:bg-neutral-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-md text-white bg-primary hover:bg-primary-dark"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
+
+        {showDeleteForm && (
+          <div className="mb-4 p-4 bg-background rounded-lg border border-neutral-700">
+            <h3 className="text-lg font-medium text-white mb-4">Delete Exchange</h3>
+            <p className="text-sm text-neutral-400 mb-4">Are you sure you want to delete this exchange configuration?</p>
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setShowDeleteForm(false)}
+                className="px-4 py-2 rounded-md text-white bg-neutral-700 hover:bg-neutral-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (activeExchange) {
+                    setApiKeys(activeExchange, '', '');
+                    setActiveExchange(null);
+                    setShowDeleteForm(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-md text-white bg-red-500 hover:bg-red-600"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
-    </div>
-    
   );
 };
 
