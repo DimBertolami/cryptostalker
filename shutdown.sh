@@ -4,7 +4,7 @@ echo "=== CryptoStalker Shutdown Script ==="
 echo "This script will stop all running services"
 
 # Set the correct project directory
-PROJECT_DIR="/home/dim/git/cryptostalker_latest"
+PROJECT_DIR="/home/dim/git/cryptostalker"
 cd "$PROJECT_DIR"
 
 # Kill any existing Vite processes
