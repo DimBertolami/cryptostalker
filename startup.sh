@@ -1,6 +1,16 @@
 #!/bin/bash
 
 echo "=== CryptoStalker Startup Script ==="
+
+# Check for preview mode
+PREVIEW_MODE=false
+if [ "$1" = "preview" ]; then
+    PREVIEW_MODE=true
+    echo "Running in PREVIEW mode - will build and preview the frontend"
+else
+    echo "Running in DEVELOPMENT mode - using Vite dev server"
+fi
+
 echo "This script will ensure a clean environment and start both backend and frontend"
 
 # Set the correct project directory
@@ -35,6 +45,9 @@ echo "Activating virtual environment and installing/updating dependencies..."
 # shellcheck source=/dev/null
 source "$API_VENV_DIR/bin/activate"
 
+# Set Python path to include project root
+export PYTHONPATH="$PROJECT_DIR:$PYTHONPATH"
+
 "$API_VENV_DIR/bin/pip" install --upgrade pip > /dev/null
 "$API_VENV_DIR/bin/pip" install -r "$PROJECT_DIR/api/requirements.txt"
 if [ $? -ne 0 ]; then
@@ -65,23 +78,55 @@ else
     exit 1
 fi
 
-# Start the Vite frontend server
-echo "\n[5/5] Starting Vite frontend server..."
-npm run dev > ./frontend-server.log 2>&1 &
-FRONTEND_PID=$!
-echo "Frontend started with PID: $FRONTEND_PID"
-
-# Wait for the frontend to initialize
-echo "Waiting for frontend to initialize..."
-sleep 5
-
-# Verify the frontend is running
-if lsof -i :5173 > /dev/null 2>&1; then
-    echo "✅ Frontend server is running on port 5173"
+# Start the frontend based on mode
+if [ "$PREVIEW_MODE" = true ]; then
+    echo "\n[5/5] Building frontend for preview..."
+    # Use production environment variables
+    if VITE_API_URL=/api npm run build; then
+        echo "✅ Frontend build completed successfully"
+        echo "Starting frontend preview server..."
+        npm run preview > ./frontend-server.log 2>&1 &
+        FRONTEND_PID=$!
+        echo "Frontend preview started with PID: $FRONTEND_PID"
+        
+        # Wait for the frontend to initialize
+        echo "Waiting for frontend preview to initialize..."
+        sleep 5
+        
+        # Verify the frontend is running (preview typically runs on 4173)
+        if lsof -i :4173 > /dev/null 2>&1; then
+            echo "✅ Frontend preview is running on port 4173"
+            echo "Access the preview at: http://localhost:4173"
+        else
+            echo "⚠ Frontend preview might have issues starting"
+            echo "Check frontend-server.log for details"
+        fi
+    else
+        echo "❌ Frontend build failed"
+        echo "Check the build output above for errors"
+        exit 1
+    fi
 else
-    echo "❌ Frontend server failed to start on port 5173"
-    echo "Check frontend-server.log for details"
-    exit 1
+    # Development mode
+    echo "\n[5/5] Starting Vite development server..."
+    # Use development environment variables
+    VITE_API_URL=http://localhost:5001/api npm run dev > ./frontend-server.log 2>&1 &
+    FRONTEND_PID=$!
+    echo "Frontend dev server started with PID: $FRONTEND_PID"
+    
+    # Wait for the frontend to initialize
+    echo "Waiting for frontend to initialize..."
+    sleep 5
+    
+    # Verify the frontend is running
+    if lsof -i :5173 > /dev/null 2>&1; then
+        echo "✅ Frontend dev server is running on port 5173"
+        echo "Access the development server at: http://localhost:5173"
+    else
+        echo "❌ Frontend dev server failed to start on port 5173"
+        echo "Check frontend-server.log for details"
+        exit 1
+    fi
 fi
 
 # Final verification step

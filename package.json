@@ -17,6 +17,7 @@
     "@solana/wallet-adapter-brave": "^0.1.17",
     "@solana/wallet-adapter-glow": "^0.1.18",
     "@solana/wallet-adapter-mathwallet": "^0.9.21",
+    "@solana/wallet-adapter-react": "^0.15.38",
     "@solana/wallet-adapter-react-ui": "^0.9.38",
     "@solana/wallet-adapter-trust": "^0.1.16",
     "@solana/wallet-adapter-wallets": "^0.19.36",

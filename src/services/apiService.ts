@@ -1,10 +1,11 @@
 import axios, { AxiosRequestConfig } from 'axios';
 
-// Use the direct URL to the API server
-const API_BASE_URL = 'http://localhost:5001/api';
+// Use the environment variable for the API URL, falling back to relative path
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Configure axios defaults
 axios.defaults.withCredentials = false;
+axios.defaults.baseURL = API_BASE_URL;
 
 interface Cryptocurrency {
     id: string;
@@ -106,7 +107,7 @@ export const fetchNewCoinsFromCoinGecko = async (): Promise<Cryptocurrency[]> =>
                 vs_currency: 'usd',
                 order: 'market_cap_desc',
                 per_page: 250,
-                page: 1,
+                page: 20,
                 sparkline: false,
                 price_change_percentage: '24h'
             }

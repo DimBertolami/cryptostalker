@@ -3,7 +3,7 @@ import { Tabs, TabList, TabPanel } from './Tabs';
 import NewCryptosTable from './NewCryptosTable';
 import TradeHistory from './TradeHistory';
 import Portfolio from './Portfolio';
-import ExchangeSettings from './ExchangeSettings';
+import ExchangeSettingsNew from './ExchangeSettingsNew';
 import JupiterWidget from './JupiterWidget';
 import TradeSettings from './TradeSettings';
 import FetchSettings from './FetchSettings';
@@ -57,7 +57,7 @@ const Dashboard: React.FC = () => {
         </TabPanel>
         
         <TabPanel index={4}>
-          <ExchangeSettings />
+          <ExchangeSettingsNew />
         </TabPanel>
 
         <TabPanel index={5}>

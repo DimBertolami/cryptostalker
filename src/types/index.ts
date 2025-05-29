@@ -31,7 +31,15 @@ export interface TradeSignal {
   price: number;
 }
 
+export type FetchSource = 'coinmarketcap' | 'coingecko' | 'binance' | 'bitvavo' | 'jupiter';
+
+// Moved Window interface to avoid circular dependency
+export interface Window {
+  cryptoStore: any; // TODO: Replace with proper type once store is stable
+}
+
 export interface CryptoState {
+  // State properties
   cryptos: Cryptocurrency[];
   newCryptos: Cryptocurrency[];
   highValueCryptos: Cryptocurrency[];
@@ -42,21 +50,14 @@ export interface CryptoState {
   isLiveTrading: boolean;
   isAutoTrading: boolean;
   monitoredCrypto: Cryptocurrency | null;
+  fetchSource: FetchSource;
+  connectedExchanges: string[];
   focusedMonitoring: boolean;
-  tradingStats: {
-    totalProfit: number;
-    successfulTrades: number;
-    failedTrades: number;
-    averageProfit: number;
-    largestGain: number;
-    largestLoss: number;
-    lastTradeProfit: number;
-  };
   trades: Trade[];
   portfolio: TradeableCrypto[];
   updateInterval: number;
   isPaused: boolean;
-  lastUpdated?: string;
+  lastUpdated: string;
   tradeSettings: {
     walletAllocation: Record<string, number>;
     strategyParams: {
@@ -71,19 +72,38 @@ export interface CryptoState {
       };
     };
   };
+  tradingStats: {
+    totalProfit: number;
+    successfulTrades: number;
+    failedTrades: number;
+    averageProfit: number;
+    largestGain: number;
+    largestLoss: number;
+    lastTradeProfit: number;
+  };
   
   // Actions
-  toggleFocusedMonitoring: () => void;
-  togglePause: () => void;
-  fetchCryptos: (showAll?: boolean) => Promise<void>;
+  setFetchSource: (source: FetchSource) => void;
+  addConnectedExchange: (exchange: string) => void;
   setShowAllCryptos: (showAll: boolean) => void;
-  buyManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => Trade;
-  sellManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => void;
+  updateTradeSettings: (settings: Partial<CryptoState['tradeSettings']>) => void;
+  updateTradingStats: (stats: Partial<CryptoState['tradingStats']>) => void;
+  togglePause: () => void;
+  toggleAutoRefresh: () => void;
+  setUpdateInterval: (interval: number) => void;
+  setError: (error: string | null) => void;
+  setLoading: (loading: boolean) => void;
+  setMonitoredCrypto: (crypto: Cryptocurrency | null) => void;
+  setFocusedMonitoring: (focused: boolean) => void;
+  toggleFocusedMonitoring: () => void;
   toggleAutoTrading: () => void;
   toggleLiveTrading: () => void;
   updatePriceForCrypto: (cryptoId: string, newPrice: number) => void;
-  setUpdateInterval: (interval: number) => void;
-  updateTradeSettings: (newSettings: CryptoState['tradeSettings']) => void;
+  addToPortfolio: (crypto: Cryptocurrency, amount: number, price: number) => void;
+  removeFromPortfolio: (cryptoId: string) => void;
+  fetchCryptos: () => Promise<void>;
+  buyManual: (crypto: Cryptocurrency, amount: number, exchange: 'bitvavo' | 'binance') => Promise<Trade | undefined>;
+  sellManual: (crypto: Cryptocurrency | TradeableCrypto, amount: number, exchange: 'bitvavo' | 'binance') => Promise<Trade | undefined>;
 }
 
 export interface Trade {

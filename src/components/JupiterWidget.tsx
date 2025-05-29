@@ -1,113 +1,72 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import '@jup-ag/terminal/css';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { Loader2 } from 'lucide-react';
+import { Terminal, ArrowRight, RefreshCw } from 'lucide-react';
+import JupiterTerminal from './JupiterTerminal';
+import JupiterTradeWidget from './JupiterTradeWidget';
 import './JupiterWidget.css';
 
 const JupiterWidget: React.FC = () => {
-  const { publicKey, signTransaction, signAllTransactions } = useWallet();
-  const jupiterContainerRef = useRef<HTMLDivElement>(null);
-  const isInitializedRef = useRef(false);
-  const loadingRef = useRef(true);
+  const { connected } = useWallet();
+  const [activeTab, setActiveTab] = useState<'terminal' | 'trade'>('terminal');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    // Skip if already initialized or if wallet is not connected
-    if (isInitializedRef.current || !publicKey || !signTransaction || !signAllTransactions) {
-      return;
-    }
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    // Simulate refresh delay
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 1000);
+  };
 
-    // Define an async function to load and initialize Jupiter Terminal
-    const loadJupiterTerminal = async () => {
-      try {
-        // Make sure the container exists
-        if (!jupiterContainerRef.current) return;
-
-        // Import Jupiter Terminal dynamically
-        const jupiterModule = await import('@jup-ag/terminal');
-        
-        // Set flags before initialization to prevent re-entry
-        isInitializedRef.current = true;
-
-        // Configure and initialize Jupiter Terminal
-        // Using any to bypass TypeScript strict checking since the Jupiter API may have changed
-        const config: any = {
-          endpoint: 'https://api.devnet.solana.com',
-          // Make sure this ID matches the div ID in the render method
-          integratedTargetId: 'jupiter-terminal-target',
-          platformFeeAndAccounts: undefined,
-          defaultExplorer: 'Solscan',
-          displayMode: 'integrated',
-          formProps: {
-            fixedInputMint: false,
-            fixedOutputMint: false,
-            swapMode: 'ExactIn',
-            defaultInputMint: 'SOL',
-            defaultOutputMint: 'USDC',
-          },
-          containerStyles: {
-            borderRadius: '10px',
-            border: '1px solid #333',
-          },
-          walletProviderInfo: {
-            publicKey: publicKey,
-            signTransaction: signTransaction,
-            signAllTransactions: signAllTransactions,
-          },
-        };
-
-        // Initialize Jupiter Terminal
-        await jupiterModule.init(config);
-        loadingRef.current = false;
-
-        // Force a re-render to reflect the loading state
-        // Using a small state update to trigger re-render
-        const element = document.getElementById('jupiter-loading-indicator');
-        if (element) {
-          element.style.display = 'none';
-        }
-      } catch (error) {
-        console.error('Error initializing Jupiter Terminal:', error);
-        loadingRef.current = false;
-        isInitializedRef.current = false;
-      }
-    };
-
-    // Load Jupiter Terminal
-    loadJupiterTerminal();
-
-    // Cleanup function
-    return () => {
-      if (isInitializedRef.current) {
-        // Try to clean up Jupiter Terminal if needed
-        import('@jup-ag/terminal').then(jupiterModule => {
-          try {
-            jupiterModule.close();
-          } catch (e) {
-            console.error('Error closing Jupiter Terminal:', e);
-          }
-        }).catch(console.error);
-      }
-    };
-  }, [publicKey, signTransaction, signAllTransactions]);
 
   return (
     <div className="jupiter-widget-container">
-      {!publicKey ? (
-        <div className="wallet-connect-prompt">
-          <h2>Connect your wallet to use Jupiter Swap</h2>
-          <p>Jupiter aggregates multiple DEXs to provide the best swap rates on Solana</p>
-          <div className="wallet-button-wrapper">
-            <WalletMultiButton />
-          </div>
+      {!connected ? (
+        <div className="flex flex-col items-center justify-center p-8 text-center">
+          <Terminal className="w-12 h-12 text-primary mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Connect your wallet to trade</h2>
+          <p className="text-neutral-400 mb-6">Connect your Solana wallet to start trading on Jupiter</p>
+          <WalletMultiButton className="bg-primary hover:bg-primary-dark text-white font-medium py-2 px-6 rounded-lg" />
         </div>
       ) : (
-        <div className="jupiter-terminal-wrapper">
-          <div id="jupiter-loading-indicator" className="jupiter-loading">
-            <Loader2 className="animate-spin h-6 w-6 mr-2" />
-            <span>Loading Jupiter Terminal...</span>
+        <div className="w-full">
+          {/* Tabs */}
+          <div className="flex border-b border-neutral-700 mb-6">
+            <button
+              className={`flex items-center py-3 px-6 font-medium ${activeTab === 'terminal' ? 'text-primary border-b-2 border-primary' : 'text-neutral-400 hover:text-white'}`}
+              onClick={() => setActiveTab('terminal')}
+            >
+              <Terminal className="w-5 h-5 mr-2" />
+              Terminal
+            </button>
+            <button
+              className={`flex items-center py-3 px-6 font-medium ${activeTab === 'trade' ? 'text-primary border-b-2 border-primary' : 'text-neutral-400 hover:text-white'}`}
+              onClick={() => setActiveTab('trade')}
+            >
+              <ArrowRight className="w-5 h-5 mr-2" />
+              Trade
+            </button>
+            <div className="flex-1 flex justify-end">
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="p-2 text-neutral-400 hover:text-white transition-colors"
+                title="Refresh"
+              >
+                <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </div>
-          <div id="jupiter-terminal-target" ref={jupiterContainerRef} />
+          
+          {/* Tab Content */}
+          <div className="mt-4">
+            {activeTab === 'terminal' ? (
+              <JupiterTerminal />
+            ) : (
+              <JupiterTradeWidget />
+            )}
+          </div>
         </div>
       )}
     </div>

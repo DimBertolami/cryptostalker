@@ -8,7 +8,7 @@ import random
 import requests
 import traceback
 from datetime import datetime, timedelta
-from recent_high_volume import get_recent_cryptos
+from .recent_high_volume import get_recent_cryptos
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
@@ -22,7 +22,7 @@ except Exception as e:
 import ccxt
 from supabase import create_client, Client
 from flask import Blueprint
-from api.utils.encryption import encrypt_data, decrypt_data
+from .utils.encryption import encrypt_data, decrypt_data
 
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
