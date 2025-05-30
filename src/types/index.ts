@@ -129,19 +129,25 @@ export interface AppState {
 export interface ExchangeState {
   exchanges: {
     bitvavo: {
+      connected: boolean;
       apiKey: string;
       apiSecret: string;
-      isConfigured: boolean;
     };
     binance: {
+      connected: boolean;
       apiKey: string;
       apiSecret: string;
-      isConfigured: boolean;
+    };
+    jupiter: {
+      connected: boolean;
+      apiKey: string;
+      apiSecret: string;
+      url?: string;
     };
   };
   
-  updateExchangeCredentials: (
-    exchange: 'bitvavo' | 'binance',
+  setApiKeys: (
+    exchange: string,
     apiKey: string,
     apiSecret: string
   ) => void;

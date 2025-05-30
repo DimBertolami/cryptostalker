@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ExchangeState } from '../types';
+import type { ExchangeState } from './exchangeTypes';
 import toast from 'react-hot-toast';
 
 const useExchangeStore = create<ExchangeState>((set: (state: ExchangeState | ((state: ExchangeState) => ExchangeState)) => void) => ({
@@ -14,6 +14,12 @@ const useExchangeStore = create<ExchangeState>((set: (state: ExchangeState | ((s
       apiKey: '',
       apiSecret: '',
     },
+    jupiter: {
+      connected: false,
+      apiKey: '',
+      apiSecret: '',
+      url: '',
+    },
   },
   
   setApiKeys: (exchange: string, apiKey: string, apiSecret: string) => {
@@ -23,6 +29,7 @@ const useExchangeStore = create<ExchangeState>((set: (state: ExchangeState | ((s
     }
     
     set((state: ExchangeState) => ({
+      ...state,
       exchanges: {
         ...state.exchanges,
         [exchange]: {
