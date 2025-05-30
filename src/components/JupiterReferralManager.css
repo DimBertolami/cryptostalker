@@ -1,0 +1,211 @@
+.jupiter-referral-manager {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.jupiter-referral-manager h2 {
+  color: #3a3a3a;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.jupiter-referral-manager h3 {
+  color: #4a4a4a;
+  margin-top: 25px;
+  margin-bottom: 15px;
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 8px;
+}
+
+.connect-wallet-section {
+  text-align: center;
+  padding: 30px 0;
+}
+
+.network-selector {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.network-selector label {
+  margin-right: 15px;
+  font-weight: bold;
+}
+
+.network-buttons {
+  display: flex;
+}
+
+.network-buttons button {
+  padding: 8px 16px;
+  background-color: #e0e0e0;
+  border: none;
+  cursor: pointer;
+  margin-right: 10px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.network-buttons button.active {
+  background-color: #007bff;
+  color: white;
+}
+
+.input-group {
+  margin-bottom: 15px;
+}
+
+.input-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+}
+
+.input-group input, .input-group select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.private-key-section {
+  background-color: #fff3cd;
+  padding: 15px;
+  border-radius: 4px;
+  margin: 20px 0;
+}
+
+.private-key-input {
+  display: flex;
+}
+
+.private-key-input input {
+  flex-grow: 1;
+  border-right: none;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.toggle-visibility {
+  padding: 10px 15px;
+  background-color: #e9ecef;
+  border: 1px solid #ddd;
+  border-left: none;
+  cursor: pointer;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+.warning {
+  color: #856404;
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+.token-selector {
+  margin-bottom: 20px;
+}
+
+.radio-group {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.radio-group input[type="radio"] {
+  margin-right: 8px;
+}
+
+.radio-group label {
+  margin-right: 15px;
+}
+
+.radio-group select, .radio-group input[type="text"] {
+  flex-grow: 1;
+  max-width: 400px;
+}
+
+.token-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.token-accounts-list {
+  margin-top: 20px;
+}
+
+.token-accounts-list h4 {
+  margin-bottom: 10px;
+}
+
+.token-accounts-list table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.token-accounts-list th, .token-accounts-list td {
+  padding: 10px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+}
+
+.token-accounts-list th {
+  background-color: #f2f2f2;
+  font-weight: 600;
+}
+
+.token-accounts-list a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.token-accounts-list a:hover {
+  text-decoration: underline;
+}
+
+.claim-fees-section {
+  margin-top: 30px;
+}
+
+button {
+  padding: 10px 16px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+button:hover {
+  background-color: #0069d9;
+}
+
+button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+.error-message {
+  background-color: #f8d7da;
+  color: #721c24;
+  padding: 10px;
+  border-radius: 4px;
+  margin-top: 20px;
+}
+
+.success-message {
+  background-color: #d4edda;
+  color: #155724;
+  padding: 10px;
+  border-radius: 4px;
+  margin-top: 20px;
+}

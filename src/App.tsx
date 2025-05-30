@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard';
 import StatusBar from './components/StatusBar';
 import WalletProvider from './components/wallet/WalletProvider'; 
 import JupiterSwap from './pages/JupiterSwap';
+import JupiterReferral from './pages/JupiterReferral';
 import SupabaseTestPage from './components/SupabaseTestPage'; // Import the new page
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -48,6 +49,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/swap" element={<JupiterSwap />} />
+              <Route path="/jupiter-referral" element={<JupiterReferral />} />
               <Route path="/supabase-test" element={<SupabaseTestPage />} /> {/* Add route for Supabase test page */}
             </Routes>
           </main>
