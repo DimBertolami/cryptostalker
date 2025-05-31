@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@jup-ag/react-hook": "^6.2.0",
+    "@jup-ag/referral-sdk": "^0.2.0",
     "@jup-ag/terminal": "^4.3.0",
     "@jup-ag/wallet-adapter": "^0.2.3",
     "@solana/wallet-adapter-backpack": "^0.1.14",

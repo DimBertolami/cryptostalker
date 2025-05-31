@@ -10,3 +10,8 @@ ccxt
 python-dotenv
 supabase
 cryptography
+aiohttp
+asyncio
+dash
+pandas
+plotly
