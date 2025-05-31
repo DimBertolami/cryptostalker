@@ -223,5 +223,43 @@ def update_dashboard(n):
     return dropdown_options, None, fig, df.to_html(index=False, classes='crypto-table')
 
 
+from flask import Flask, request, jsonify
+import os
+import requests as pyrequests
+
+# --- ALPACA PROXY ENDPOINT ---
+ALPACA_BASE_URL = 'https://data.alpaca.markets/v1beta1/crypto'
+
+flask_app = Flask(__name__)
+
+@flask_app.route('/api/alpaca-proxy', methods=['GET'])
+def alpaca_proxy():
+    endpoint = request.args.get('endpoint')
+    if not endpoint:
+        return jsonify({'error': 'Missing endpoint parameter'}), 400
+
+    api_key = os.environ.get('ALPACA_API_KEY')
+    api_secret = os.environ.get('ALPACA_API_SECRET')
+    if not api_key or not api_secret:
+        return jsonify({'error': 'Alpaca API credentials not set'}), 501
+
+    # Build the Alpaca API URL
+    url = f"{ALPACA_BASE_URL}/{endpoint.lstrip('/')}"
+    # Forward all other query params
+    params = {k: v for k, v in request.args.items() if k != 'endpoint'}
+    headers = {
+        'APCA-API-KEY-ID': api_key,
+        'APCA-API-SECRET-KEY': api_secret,
+        'Accept': 'application/json'
+    }
+    try:
+        response = pyrequests.get(url, headers=headers, params=params, timeout=15)
+        response.raise_for_status()
+        return jsonify(response.json())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 502
+
+# Mount Flask app if running as main
 if __name__ == '__main__':
     app.run_server(debug=True)
+    flask_app.run(port=5001, debug=True)

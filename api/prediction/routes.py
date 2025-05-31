@@ -332,17 +332,8 @@ def get_chart_data():
             logger.error(traceback.format_exc())
             return jsonify({"status": "error", "error": error_msg}), 500
 
-        response = {
-            "status": "success",
-            "chart_data": {
-                "exchange": used_source or exchange_id,
-                "symbol": symbol,
-                "timeframe": timeframe,
-                "data": chart_data
-            }
-        }
         logger.info(f"Returning chart data response with {len(chart_data)} data points from {used_source or exchange_id}")
-        return jsonify(response)
+        return jsonify(chart_data)
     except Exception as e:
         error_msg = f"Error generating chart data: {str(e)} | Params: exchange_id={request.args.get('exchange_id')}, symbol={request.args.get('symbol')}, timeframe={request.args.get('timeframe')}, limit={request.args.get('limit')}"
         logger.error(error_msg)

@@ -51,6 +51,17 @@ const FetchSettings: React.FC = () => {
               />
               <span className="text-white">CoinGecko</span>
             </label>
+            <label className="flex items-center space-x-2">
+              <input
+                type="radio"
+                name="fetchSource"
+                value="alpaca"
+                checked={fetchSource === 'alpaca'}
+                onChange={() => handleSourceChange('alpaca')}
+                className="form-radio text-primary"
+              />
+              <span className="text-white">Alpaca</span>
+            </label>
           </div>
         </div>
         

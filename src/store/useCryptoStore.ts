@@ -36,7 +36,7 @@ const useCryptoStore = create<CryptoState & { fetchSource: string; setFetchSourc
   isLiveTrading: false,
   isAutoTrading: false,
   monitoredCrypto: null,
-  fetchSource: 'coinmarketcap',
+  fetchSource: 'alpaca',
   setFetchSource: (source) => set({ fetchSource: source }),
   tradingStats: {
     totalProfit: 0,

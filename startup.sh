@@ -169,7 +169,7 @@ else
 fi
 
 # Print success message
-echo -e "\n${BOLD}${GREEN}🎉 CryptoStalker is now running! 🎉${RESET}"
+echo -e "\n${BOLD}${GREEN}\ud83c\udf89 CryptoStalker is now running! \ud83c\udf89${RESET}"
 echo -e "${BOLD}${CYAN}Backend:${RESET} http://localhost:5001"
 echo -e "${BOLD}${CYAN}Frontend:${RESET} http://localhost:5173"
 echo "\nTo stop all services, run: ./shutdown.sh"
@@ -179,5 +179,21 @@ echo "Log files: api-server.log and frontend-server.log"
 echo "$BACKEND_PID" > .backend.pid
 echo "$FRONTEND_PID" > .frontend.pid
 sleep 2
+
+# Automated proxy test
+PROXY_TEST_URL="http://localhost:5173/api/ccxt/exchanges"
+PROXY_TEST_RESULT=$(curl -s -w "%{http_code}" -o /tmp/proxy_test_response.txt "$PROXY_TEST_URL")
+if [ "$PROXY_TEST_RESULT" = "200" ]; then
+    echo -e "${GREEN}${CHECK} Vite proxy to backend is WORKING: $PROXY_TEST_URL${RESET}"
+else
+    echo -e "${RED}${CROSS} Vite proxy to backend FAILED (HTTP $PROXY_TEST_RESULT): $PROXY_TEST_URL${RESET}"
+    echo -e "${YELLOW}${WARN} Printing backend and frontend logs for debugging:${RESET}"
+    echo -e "\n${BOLD}--- api-server.log ---${RESET}"
+    tail -n 20 api-server.log
+    echo -e "\n${BOLD}--- frontend-server.log ---${RESET}"
+    tail -n 20 frontend-server.log
+    echo -e "\n${RED}You likely have a proxy or port issue. Try running ./shutdown.sh then ./startup.sh again.${RESET}"
+fi
+
 echo "Verifying Flask server..."
 curl -s http://localhost:5001/api/new-cryptos >/dev/null && echo "Flask server is running" || echo "Flask server failed to start"
