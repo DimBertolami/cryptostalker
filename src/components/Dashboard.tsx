@@ -7,6 +7,7 @@ import ExchangeSettings from './ExchangeSettings';
 import JupiterWidget from './JupiterWidget';
 import TradeSettings from './TradeSettings';
 import FetchSettings from './FetchSettings';
+import PredictionDashboard from './PredictionDashboard';
 import useCryptoStore from '../store/useCryptoStore';
 
 const Dashboard: React.FC = () => {
@@ -35,6 +36,7 @@ const Dashboard: React.FC = () => {
           <TabList.Tab>Portfolio</TabList.Tab>
           <TabList.Tab>Trade History</TabList.Tab>
           <TabList.Tab>Jupiter Swap</TabList.Tab>
+          <TabList.Tab>Predictions</TabList.Tab>
           <TabList.Tab>Exchange Settings</TabList.Tab>
           <TabList.Tab>Fetch Settings</TabList.Tab>
           <TabList.Tab>Trade Settings</TabList.Tab>
@@ -57,14 +59,18 @@ const Dashboard: React.FC = () => {
         </TabPanel>
         
         <TabPanel index={4}>
+          <PredictionDashboard />
+        </TabPanel>
+        
+        <TabPanel index={5}>
           <ExchangeSettings />
         </TabPanel>
 
-        <TabPanel index={5}>
+        <TabPanel index={6}>
           <FetchSettings />
         </TabPanel>
 
-        <TabPanel index={6}>
+        <TabPanel index={7}>
           <TradeSettings />
         </TabPanel>
       </Tabs>

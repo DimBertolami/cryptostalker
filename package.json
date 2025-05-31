@@ -37,6 +37,7 @@
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^7.6.1",
     "react-toastify": "^11.0.5",
+    "recharts": "^2.15.3",
     "technicalindicators": "^3.1.0",
     "zustand": "^4.4.6"
   },
