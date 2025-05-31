@@ -29,8 +29,20 @@ const PredictionChart: React.FC<PredictionChartProps> = ({
         setIsLoading(true);
         setError(null);
 
-        // Fetch historical price data
-        const historicalData = await fetchHistoricalData(exchange, symbol, timeframe);
+        // Log parameter values before fetching historical data
+        console.log('PredictionChart: fetchHistoricalData params', {
+          exchange_id: exchange,
+          symbol,
+          timeframe,
+          limit: 100
+        });
+        // Fetch historical price data using named parameters
+        const historicalData = await fetchHistoricalData({
+          exchange_id: exchange,
+          symbol,
+          timeframe,
+          limit: 100
+        });
         
         // Format data for chart
         const formattedData = historicalData.map((item: HistoricalDataPoint) => ({

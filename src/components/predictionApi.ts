@@ -4,33 +4,56 @@
  * This module provides functions to interact with the prediction and CCXT API endpoints.
  */
 
-// Base URLs for API requests
+// Base URLs for API endpoints
 const PREDICTION_API_BASE_URL = '/api/prediction';
 const CCXT_API_BASE_URL = '/api/ccxt';
 
+// Helper function to handle API requests
+async function apiRequest(url: string, options: RequestInit = {}) {
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        ...(options.headers || {})
+      },
+      // Important: This ensures cookies are sent with the request
+      credentials: 'same-origin',
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error(`API request error for ${url}:`, error);
+    throw error;
+  }
+}
+
 /**
  * Fetch the current status of the prediction model
- * 
- * Note: This is a mock implementation since we don't have a real prediction API yet.
  */
 export const fetchPredictionStatus = async () => {
   try {
-    // Try to check if CCXT is available at all
-    const response = await fetch(`${CCXT_API_BASE_URL}/exchanges`);
+    console.log('Fetching prediction status...');
+    const data = await apiRequest(`${PREDICTION_API_BASE_URL}/status`);
+    console.log('Prediction status response:', data);
     
-    if (!response.ok) {
-      throw new Error(`Backend services not available`);
-    }
+    // Check if the model is initialized
+    const initialized = data?.model_info?.initialized === true;
     
-    // Return mock status data
     return {
-      initialized: true,
-      model_type: 'LSTM',
-      trained: true,
-      last_trained: new Date().toISOString(),
-      accuracy: 0.78,
+      initialized,
+      model_type: 'DDPG',
+      trained: initialized && data?.model_info?.last_training !== null,
+      last_trained: data?.model_info?.last_training || null,
+      last_prediction: data?.model_info?.last_prediction || null,
       symbols_available: ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'ADA/USDT'],
-      timeframes_available: ['1m', '5m', '15m', '1h', '4h', '1d']
+      timeframes_available: ['1m', '5m', '15m', '1h', '4h', '1d'],
+      error: data?.model_info?.error || null
     };
   } catch (error: unknown) {
     console.error('Error fetching prediction status:', error);
@@ -48,15 +71,9 @@ export const fetchPredictionStatus = async () => {
  */
 export const fetchExchanges = async () => {
   try {
-    // Use the CCXT endpoint instead of prediction API
-    // Note: Since we're running locally, we don't need the API_URL prefix
-    const response = await fetch(`${CCXT_API_BASE_URL}/exchanges`);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
-    }
-    
-    const data = await response.json();
+    console.log('Fetching exchanges from:', `${CCXT_API_BASE_URL}/exchanges`);
+    const data = await apiRequest(`${CCXT_API_BASE_URL}/exchanges`);
+    console.log('Exchanges response:', data);
     
     // The CCXT endpoint returns an array of exchange IDs
     // We need to return it as is since the component expects an array
@@ -74,48 +91,25 @@ export const fetchExchanges = async () => {
 };
 
 /**
- * Fetch historical price data for a symbol
- * 
- * Note: This is a mock implementation since we don't have a direct CCXT endpoint
- * for historical data. In a real implementation, you would use the CCXT
- * fetch_ohlcv endpoint or similar.
+ * Fetch historical chart data for a symbol
  */
-export const fetchHistoricalData = async (exchange: string, symbol: string, timeframe: string) => {
+export const fetchHistoricalData = async (params: {
+  exchange_id: string;
+  symbol: string;
+  timeframe: string;
+  limit: number;
+}) => {
   try {
-    // First try to test if the exchange is available via CCXT
-    const testResponse = await fetch(`${CCXT_API_BASE_URL}/test_exchange_markets?exchange_id=${exchange}`);
+    const { exchange_id, symbol, timeframe, limit } = params;
+    const url = `${PREDICTION_API_BASE_URL}/chart-data?exchange_id=${encodeURIComponent(exchange_id)}&symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`;
     
-    if (!testResponse.ok) {
-      throw new Error(`Exchange ${exchange} not available or not supported`);
-    }
-    
-    // Generate mock historical data since we don't have the real endpoint
-    const now = Date.now();
-    const data = [];
-    const basePrice = symbol.includes('BTC') ? 60000 : symbol.includes('ETH') ? 3000 : 1;
-    
-    // Generate 100 data points with random price movements
-    for (let i = 0; i < 100; i++) {
-      const timestamp = now - (99 - i) * (timeframe === '1h' ? 3600000 : timeframe === '1d' ? 86400000 : 60000);
-      const volatility = 0.02; // 2% price movement
-      const randomChange = (Math.random() - 0.5) * volatility;
-      const price = basePrice * (1 + randomChange * i);
-      
-      data.push({
-        timestamp,
-        open: price * (1 - volatility/4),
-        high: price * (1 + volatility/2),
-        low: price * (1 - volatility/2),
-        close: price,
-        volume: Math.random() * 100
-      });
-    }
-    
-    return data;
+    console.log('Fetching historical data from:', url);
+    const result = await apiRequest(url);
+    console.log('Historical data response:', result);
+    return result;
   } catch (error: unknown) {
     console.error('Error fetching historical data:', error);
-    // Return empty array instead of throwing to prevent UI errors
-    return [];
+    throw error;
   }
 };
 
@@ -127,28 +121,41 @@ export const trainModel = async (params: {
   symbol: string;
   timeframe: string;
   limit: number;
-  epochs?: number;
-  actor_layers?: number[];
-  critic_layers?: number[];
-  learning_rate?: number;
-  batch_size?: number;
+  epochs: number;
 }) => {
   try {
-    const response = await fetch(`${PREDICTION_API_BASE_URL}/train`, {
+    console.log('Training model with params:', params);
+    const result = await apiRequest(`${PREDICTION_API_BASE_URL}/train`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(params),
     });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
-    }
-    
-    return await response.json();
+    console.log('Training response:', result);
+    return result;
   } catch (error: unknown) {
     console.error('Error training model:', error);
+    throw error;
+  }
+};
+
+/**
+ * Initialize the prediction model
+ */
+export const initializeModel = async (params: {
+  exchange_id: string;
+  symbol: string;
+}) => {
+  try {
+    console.log('Initializing model with params:', params);
+    
+    // Use query parameters for initialization
+    const url = `${PREDICTION_API_BASE_URL}/initialize?exchange_id=${encodeURIComponent(params.exchange_id)}&symbol=${encodeURIComponent(params.symbol)}`;
+    console.log('Initializing model with URL:', url);
+    
+    const result = await apiRequest(url);
+    console.log('Model initialization response:', result);
+    return result;
+  } catch (error: unknown) {
+    console.error('Error initializing model:', error);
     throw error;
   }
 };
@@ -158,23 +165,23 @@ export const trainModel = async (params: {
  */
 export const fetchPrediction = async (exchange: string, symbol: string, timeframe: string) => {
   try {
-    const response = await fetch(`${PREDICTION_API_BASE_URL}/predict`, {
+    console.log('Fetching prediction with params:', { exchange_id: exchange, symbol, timeframe });
+    
+    // Generate mock market state data - in a real implementation, this would come from historical data
+    const marketState = Array(10).fill(0).map(() => Math.random() * 2 - 1); // 10 random values between -1 and 1
+    
+    const result = await apiRequest(`${PREDICTION_API_BASE_URL}/predict`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         exchange_id: exchange,
         symbol: symbol,
         timeframe: timeframe,
+        market_state: marketState
       }),
     });
     
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
-    }
-    
-    return await response.json();
+    console.log('Prediction response:', result);
+    return result;
   } catch (error: unknown) {
     console.error('Error fetching prediction:', error);
     throw error;
@@ -182,28 +189,23 @@ export const fetchPrediction = async (exchange: string, symbol: string, timefram
 };
 
 /**
- * Execute a trading signal based on prediction
+ * Execute a prediction signal
  */
 export const executePredictionSignal = async (params: {
   exchange_id: string;
   symbol: string;
+  market_state: number[];
 }) => {
   try {
-    const response = await fetch(`${PREDICTION_API_BASE_URL}/execute_signal`, {
+    console.log('Executing prediction with params:', params);
+    const result = await apiRequest(`${PREDICTION_API_BASE_URL}/predict`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(params),
     });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
-    }
-    
-    return await response.json();
+    console.log('Prediction response:', result);
+    return result;
   } catch (error: unknown) {
-    console.error('Error executing signal:', error);
+    console.error('Error executing prediction:', error);
     throw error;
   }
 };
@@ -400,21 +402,16 @@ export const configureExchange = async (params: {
  */
 export const removeExchange = async (exchangeId: string) => {
   try {
-    const response = await fetch(`${PREDICTION_API_BASE_URL}/remove_exchange`, {
+    console.log('Removing exchange:', exchangeId);
+    const result = await apiRequest(`${PREDICTION_API_BASE_URL}/remove_exchange`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         exchange_id: exchangeId,
       }),
     });
     
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
-    }
-    
-    return await response.json();
+    console.log('Remove exchange response:', result);
+    return result;
   } catch (error: unknown) {
     console.error('Error removing exchange:', error);
     throw error;
@@ -483,13 +480,10 @@ export const getOpenOrders = async (params: {
       url += `&symbol=${encodeURIComponent(params.symbol)}`;
     }
     
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
-    }
-    
-    return await response.json();
+    console.log('Fetching open orders from:', url);
+    const result = await apiRequest(url);
+    console.log('Open orders response:', result);
+    return result;
   } catch (error: unknown) {
     console.error('Error getting open orders:', error);
     throw error;

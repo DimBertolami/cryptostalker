@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
-import { fetchExchanges, trainModel, executePredictionSignal } from './predictionApi';
+import { fetchExchanges, trainModel, executePredictionSignal, initializeModel, fetchPredictionStatus } from './predictionApi';
 // These types are used in the function parameters
 // import { TrainingParams, SignalExecutionParams } from '../types/prediction';
 
@@ -65,6 +65,37 @@ const PredictionControls: React.FC<PredictionControlsProps> = ({
 
     loadExchanges();
   }, [selectedExchange, onExchangeChange]);
+  
+  // Check model status when component mounts or when exchange/symbol changes
+  useEffect(() => {
+    const checkModelStatus = async () => {
+      if (selectedExchange && selectedSymbol) {
+        try {
+          const status = await fetchPredictionStatus();
+          console.log('Model status:', status);
+          
+          if (!status.initialized) {
+            console.log('Model not initialized, initializing...');
+            try {
+              await initializeModel({
+                exchange_id: selectedExchange,
+                symbol: selectedSymbol
+              });
+              console.log('Model initialized successfully');
+              // No need to update isModelInitialized here as we'll check status again
+            } catch (error) {
+              console.error('Error initializing model:', error);
+              toast.error('Failed to initialize model');
+            }
+          }
+        } catch (error) {
+          console.error('Error checking model status:', error);
+        }
+      }
+    };
+    
+    checkModelStatus();
+  }, [selectedExchange, selectedSymbol]);
 
   const handleTrainModel = async () => {
     try {

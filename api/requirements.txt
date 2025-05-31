@@ -15,3 +15,6 @@ asyncio
 dash
 pandas
 plotly
+tensorflow
+matplotlib
+numpy

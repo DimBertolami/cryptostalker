@@ -8,7 +8,8 @@ import random
 import requests
 import traceback
 from datetime import datetime, timedelta
-from recent_high_volume import get_recent_cryptos
+from api.prediction.routes import prediction_bp
+from api.recent_high_volume import get_recent_cryptos
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
@@ -596,9 +597,21 @@ def cancel_exchange_order():
         # This will be caught by the handle_ccxt_errors decorator
         raise
 
+# Add CCXT exchanges endpoint
+@ccxt_bp.route('/exchanges', methods=['GET'])
+def get_ccxt_exchanges():
+    """Return a list of all exchanges supported by CCXT."""
+    try:
+        # Return the list of all exchanges supported by CCXT
+        return jsonify(ccxt.exchanges)
+    except Exception as e:
+        app.logger.error(f"Error getting CCXT exchanges: {str(e)}")
+        return jsonify({"error": f"Failed to get exchanges: {str(e)}"}), 500
+
 # Register Blueprints
 app.register_blueprint(exchange_configurations_bp)
 app.register_blueprint(ccxt_bp)
+app.register_blueprint(prediction_bp)
 
 # --- Price Endpoint ---
 @app.route('/api/price/<string:symbol>', methods=['GET'])
