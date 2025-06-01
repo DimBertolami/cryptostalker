@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { fetchPrediction } from './predictionApi';
 
 interface PredictionStatusProps {
   isLoading: boolean;
@@ -6,6 +7,30 @@ interface PredictionStatusProps {
 }
 
 const PredictionStatus: React.FC<PredictionStatusProps> = ({ isLoading, modelStatus }) => {
+  const [predictionData, setPredictionData] = useState<any>(null);
+  
+  // Fetch prediction data when component mounts or modelStatus changes
+  useEffect(() => {
+    const fetchLatestPrediction = async () => {
+      if (modelStatus?.initialized) {
+        try {
+          // Use default values for testing - in a real app, these would be configurable
+          const exchange = 'binance';
+          const symbol = 'BTC/USDT';
+          const timeframe = '1h';
+          
+          const result = await fetchPrediction(exchange, symbol, timeframe);
+          console.log('Latest prediction data:', result);
+          setPredictionData(result);
+        } catch (error) {
+          console.error('Error fetching latest prediction:', error);
+        }
+      }
+    };
+    
+    fetchLatestPrediction();
+  }, [modelStatus]);
+  
   if (isLoading) {
     return (
       <div className="bg-background-lighter border border-neutral-700 rounded-lg p-6">
@@ -36,9 +61,9 @@ const PredictionStatus: React.FC<PredictionStatusProps> = ({ isLoading, modelSta
   const modelType = modelStatus.model_type || 'Unknown';
   const trained = modelStatus.trained || false;
   
-  // Get prediction action and confidence if available
-  const predictionAction = modelStatus.prediction?.action || null;
-  const predictionConfidence = modelStatus.prediction?.confidence || null;
+  // Get prediction action and confidence from real-time data
+  const predictionAction = predictionData?.prediction?.action || null;
+  const predictionConfidence = predictionData?.prediction?.confidence || null;
 
   return (
     <div className="bg-background-lighter border border-neutral-700 rounded-lg p-6">
@@ -62,18 +87,17 @@ const PredictionStatus: React.FC<PredictionStatusProps> = ({ isLoading, modelSta
           <span className="text-sm">{lastPrediction}</span>
         </div>
         
-        {predictionAction && (
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-400">Latest Signal</span>
-            <span className={`px-2 py-1 rounded text-xs ${
-              predictionAction === 'BUY' ? 'bg-green-900 text-green-300' : 
-              predictionAction === 'SELL' ? 'bg-red-900 text-red-300' : 
-              'bg-yellow-900 text-yellow-300'
-            }`}>
-              {predictionAction} {predictionConfidence !== null && predictionConfidence !== undefined ? `(${(predictionConfidence * 100).toFixed(0)}%)` : ''}
-            </span>
-          </div>
-        )}
+        <div className="flex justify-between items-center">
+          <span className="text-sm text-gray-400">Action</span>
+          <span className="text-sm">{predictionAction}</span>
+        </div>
+        
+        <div className="flex justify-between items-center">
+          <span className="text-sm text-gray-400">Confidence</span>
+          <span className="text-sm">{predictionConfidence}</span>
+        </div>
+        
+
         
         <div className="mt-4 pt-4 border-t border-neutral-700">
           <h4 className="text-sm font-medium mb-2">Model Configuration</h4>

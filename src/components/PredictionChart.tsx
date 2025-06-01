@@ -44,8 +44,8 @@ const PredictionChart: React.FC<PredictionChartProps> = ({
           limit: 100
         });
         
-        // Format data for chart
-        const formattedData = historicalData.map((item: HistoricalDataPoint) => ({
+        // Format data for chart with correct type
+        const formattedData: ChartDataPoint[] = historicalData.map((item: HistoricalDataPoint) => ({
           timestamp: new Date(item.timestamp).getTime(),
           date: new Date(item.timestamp).toLocaleString(),
           price: item.close,
@@ -61,7 +61,7 @@ const PredictionChart: React.FC<PredictionChartProps> = ({
         // Add prediction to chart data
         if (predictionResult && formattedData.length > 0) {
           const lastDataPoint = formattedData[formattedData.length - 1];
-          const signalText = predictionResult.signal_text || predictionResult.action;
+          const signalText = predictionResult.signal_text;
           const confidence = predictionResult.confidence;
           
           // Add prediction marker to the last data point
@@ -151,8 +151,7 @@ const PredictionChart: React.FC<PredictionChartProps> = ({
   // Determine colors based on prediction
   const signalColor = prediction?.signal_text === 'BUY' ? '#4ade80' : 
                       prediction?.signal_text === 'SELL' ? '#f87171' : 
-                      prediction?.action === 'BUY' ? '#4ade80' : 
-                      prediction?.action === 'SELL' ? '#f87171' : '#94a3b8';
+                      '#94a3b8';
 
   return (
     <div className="bg-background-lighter border border-neutral-700 rounded-lg p-6">
@@ -162,7 +161,7 @@ const PredictionChart: React.FC<PredictionChartProps> = ({
           <div className="flex items-center space-x-4">
             <div className="px-3 py-1 rounded text-sm" 
                  style={{ backgroundColor: signalColor + '33', color: signalColor }}>
-              Signal: {prediction.signal_text || prediction.action}
+              Signal: {prediction.signal_text}
             </div>
             <div className="text-sm">
               Confidence: {prediction.confidence ? `${(prediction.confidence * 100).toFixed(1)}%` : 'N/A'}
@@ -253,11 +252,11 @@ const PredictionChart: React.FC<PredictionChartProps> = ({
       
       {prediction && (
         <div className="mt-4 p-4 border border-neutral-700 rounded bg-background">
-          <h4 className="font-medium mb-2">Latest Prediction</h4>
+          <h4 className="font-medium mb-2">Technical Indicators</h4>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <p className="text-sm text-gray-400">Signal</p>
-              <p className="font-medium" style={{ color: signalColor }}>{prediction.signal_text || prediction.action}</p>
+              <p className="font-medium" style={{ color: signalColor }}>{prediction.signal_text}</p>
             </div>
             <div>
               <p className="text-sm text-gray-400">Confidence</p>
