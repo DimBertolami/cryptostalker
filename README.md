@@ -1,5 +1,15 @@
 # Cryptobot Nightstalker
-a few quick updated screenshots:
+***a few quick updated screenshots: 01-06-2025***
+
+(Jupiter terminal)
+![image](https://github.com/user-attachments/assets/21dbd4f6-1ea1-4d91-8bb4-a92b25cf45bc)
+(predictions)
+![image](https://github.com/user-attachments/assets/d86d0a55-c7c8-4b4c-ab54-2e25d8f720be)
+(exchange settings)
+![image](https://github.com/user-attachments/assets/f9244762-b95d-4697-9ce5-37f36cdf56a4)
+fetch settings)
+![image](https://github.com/user-attachments/assets/c06699ac-9338-469c-8ccf-29184299c66f)
+
 ![image](https://github.com/user-attachments/assets/0e135fd2-7a97-4326-a4ff-67c87d47d424)
 ![image](https://github.com/user-attachments/assets/bd3dacc9-d8d2-4c0c-a609-b869bbc0944a)
 **5800% profit in 20 minutes!!**
