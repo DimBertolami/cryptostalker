@@ -160,7 +160,8 @@ const PredictionControls: React.FC<PredictionControlsProps> = ({
       const response = await executePredictionSignal({
         // Using SignalExecutionParams type from our types file
         exchange_id: selectedExchange,
-        symbol: selectedSymbol
+        symbol: selectedSymbol,
+        market_state: []
       });
       
       if (response.status === 'ok') {

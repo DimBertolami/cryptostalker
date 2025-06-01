@@ -333,6 +333,122 @@ class SimpleDDPGModel:
         
         return fig
     
+        def train(self, historical_data, epochs=50, batch_size=64):
+            """
+            Train the DDPG model using historical market data.
+            
+            Args:
+                historical_data: DataFrame containing OHLCV market data
+                epochs: Number of training epochs (default: 50)
+                batch_size: Size of mini-batches (default: 64)
+                
+            Returns:
+                dict: Training history containing losses and metrics
+            """
+            # Reset training history
+            self.history = {
+                'actor_loss': [],
+                'critic_loss': [],
+                'rewards': [],
+                'portfolio_value': []
+            }
+            
+            try:
+                # Preprocess data into state-action-reward sequences
+                states, actions, rewards = self._preprocess_training_data(historical_data)
+                
+                for epoch in range(epochs):
+                    epoch_actor_loss = []
+                    epoch_critic_loss = []
+                    
+                    # Mini-batch training
+                    for i in range(0, len(states), batch_size):
+                        batch_states = states[i:i+batch_size]
+                        batch_actions = actions[i:i+batch_size]
+                        batch_rewards = rewards[i:i+batch_size]
+                        
+                        # Store experiences in replay buffer
+                        for s, a, r in zip(batch_states, batch_actions, batch_rewards):
+                            self.remember(s, a, r, s, False)  # Assuming non-terminal state
+                        
+                        # Train on batch
+                        critic_loss, actor_loss = self.learn()
+                        epoch_critic_loss.append(critic_loss)
+                        epoch_actor_loss.append(actor_loss)
+                    
+                    # Calculate epoch averages
+                    avg_critic_loss = np.mean(epoch_critic_loss)
+                    avg_actor_loss = np.mean(epoch_actor_loss)
+                    
+                    # Store in history
+                    self.history['critic_loss'].append(avg_critic_loss)
+                    self.history['actor_loss'].append(avg_actor_loss)
+                    
+                    # Log progress
+                    logger.info(
+                        f"Epoch {epoch+1}/{epochs} - "
+                        f"Critic Loss: {avg_critic_loss:.4f}, "
+                        f"Actor Loss: {avg_actor_loss:.4f}"
+                    )
+                    
+                    # Save model checkpoints
+                    if (epoch + 1) % 10 == 0 or epoch == epochs - 1:
+                        self.save_models(prefix=f"epoch_{epoch+1}_")
+                
+                return self.history
+                
+            except Exception as e:
+                logger.error(f"Training error: {str(e)}")
+                raise RuntimeError(f"Training failed: {str(e)}")
+    
+        def _preprocess_training_data(self, data):
+            """
+            Convert OHLCV data into state representations and rewards.
+            
+            Args:
+                data: DataFrame with columns: ['open', 'high', 'low', 'close', 'volume']
+                
+            Returns:
+                tuple: (states, actions, rewards)
+            """
+            try:
+                prices = data['close'].values
+                volumes = data['volume'].values
+                
+                states = []
+                actions = []
+                rewards = []
+                
+                # Create sliding window of states
+                window_size = self.state_dim // 2  # Half for price, half for volume
+                
+                for i in range(window_size, len(prices)):
+                    # Normalized price changes
+                    price_changes = (prices[i-window_size:i] - prices[i-window_size-1]) / prices[i-window_size-1]
+                    
+                    # Normalized volumes
+                    vol_changes = volumes[i-window_size:i] / np.max(volumes[i-window_size-1:i+1])
+                    
+                    # Combine into state vector
+                    state = np.concatenate([price_changes, vol_changes])
+                    
+                    # Action: derived from price momentum
+                    momentum = (prices[i] - prices[i-1]) / prices[i-1]
+                    action = np.clip(momentum * 10, -1, 1)  # Scaled to [-1, 1]
+                    
+                    # Reward: logarithmic return
+                    reward = np.log(prices[i] / prices[i-1])
+                    
+                    states.append(state)
+                    actions.append([action])
+                    rewards.append(reward)
+                    
+                return np.array(states), np.array(actions), np.array(rewards)
+                
+            except Exception as e:
+                logger.error(f"Data preprocessing error: {str(e)}")
+                raise RuntimeError(f"Failed to preprocess data: {str(e)}")
+
     def predict_signal(self, state):
         """
         Predict trading signal based on state.

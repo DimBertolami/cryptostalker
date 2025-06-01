@@ -20,7 +20,8 @@ matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 from datetime import datetime
 from flask_cors import cross_origin
-
+import ccxt
+from api.utils.exchange_utils import get_supported_pairs, is_pair_supported
 # Create a blueprint for the prediction API
 prediction_bp = Blueprint('prediction_api', __name__, url_prefix='/api/prediction')
 
@@ -143,13 +144,61 @@ def train_model():
                 logger.error(traceback.format_exc())
                 return jsonify({"status": "error", "error": error_msg}), 500
         
-        # Generate mock training data
-        logger.info("Generating mock training data...")
+        # Fetch real market data from Binance
+        logger.info(f"Fetching market data for {exchange_id} {symbol}...")
         try:
-            training_data = generate_mock_training_data()
-            logger.info(f"Generated training data with shape: {training_data.shape if hasattr(training_data, 'shape') else 'unknown'}")
-        except Exception as data_error:
-            error_msg = f"Error generating training data: {str(data_error)}"
+            logger.info(f"Initializing CCXT exchange: {exchange_id}")
+            exchange = getattr(ccxt, exchange_id)({
+                'enableRateLimit': True,
+                'options': {
+                    'defaultType': 'spot',
+                    'adjustForTimeDifference': True
+                }
+            })
+            logger.info(f"Fetching OHLCV data for {symbol} with timeframe: 1h, limit: 1000")
+            ohlcv = exchange.fetch_ohlcv(symbol, '1h', limit=1000)
+            
+            if not ohlcv or len(ohlcv) == 0:
+                error_msg = f"No OHLCV data returned for {exchange_id} {symbol}"
+                logger.error(error_msg)
+                return jsonify({"status": "error", "error": error_msg}), 400
+                
+            logger.info(f"Received {len(ohlcv)} OHLCV candles")
+            
+            # Convert to numpy array and preprocess
+            ohlcv = np.array(ohlcv)
+            closes = ohlcv[:, 4]  # Closing prices
+            
+            # Create training data (state-action-reward sequences)
+            training_data = []
+            window_size = 10
+            for i in range(len(closes) - window_size):
+                state = closes[i:i+window_size]
+                next_state = closes[i+1:i+window_size+1]
+                # Simple reward: positive if price went up
+                reward = 1 if next_state[-1] > state[-1] else -1
+                training_data.append((state, 0, reward, next_state, False))
+                
+            if len(training_data) == 0:
+                error_msg = f"Insufficient data points ({len(closes)}) to create training sequences with window size {window_size}"
+                logger.error(error_msg)
+                return jsonify({"status": "error", "error": error_msg}), 400
+                
+            training_data = np.array(training_data)
+            logger.info(f"Created training data with {len(training_data)} sequences")
+            logger.debug(f"First training sequence sample: {training_data[0]}")
+        except ccxt.NetworkError as e:
+            error_msg = f"Network error fetching market data: {str(e)}"
+            logger.error(error_msg)
+            logger.error(traceback.format_exc())
+            return jsonify({"status": "error", "error": error_msg}), 502
+        except ccxt.ExchangeError as e:
+            error_msg = f"Exchange error fetching market data: {str(e)}"
+            logger.error(error_msg)
+            logger.error(traceback.format_exc())
+            return jsonify({"status": "error", "error": error_msg}), 502
+        except Exception as e:
+            error_msg = f"Error processing market data: {str(e)}"
             logger.error(error_msg)
             logger.error(traceback.format_exc())
             return jsonify({"status": "error", "error": error_msg}), 500
@@ -158,6 +207,30 @@ def train_model():
         logger.info(f"Training model with {epochs} epochs and batch size {batch_size}...")
         try:
             history = models[model_key].train(training_data, epochs=epochs, batch_size=batch_size)
+            
+            # Initialize Binance exchange
+            binance = ccxt.binance({
+                'enableRateLimit': True,
+                'options': {
+                    'defaultType': 'spot'
+                }
+            })
+            
+            # Load all markets
+            markets = binance.load_markets()
+            
+            # Get all EUR pairs
+            eur_pairs = [symbol for symbol in markets.keys() if symbol.endswith('/EUR')]
+            # Check all EUR pairs on Binance
+            eur_pairs = get_supported_pairs('binance', 'EUR')
+            print(f"Found {eur_pairs['pair_count']} EUR pairs")
+
+            # Check specifically for SOL/EUR
+            sol_eur_available = is_pair_supported('binance', 'SOL/EUR')
+            print(f"SOL/EUR is {'available' if sol_eur_available else 'not available'} on Binance")
+
+            # Check specifically for SOL/EUR
+            #sol_eur_supported = 'SOL/EUR' in marketsata, epochs=epochs, batch_size=batch_size)
             logger.info("Model training completed")
         except Exception as train_error:
             error_msg = f"Error during model training: {str(train_error)}"
@@ -349,12 +422,6 @@ def get_chart_data():
         logger.error(traceback.format_exc())
         return jsonify({"status": "error", "error": error_msg}), 500
 
-# Helper functions
-def generate_mock_training_data():
-    """Generate mock training data for the model."""
-    # Generate 1000 random market states
-    states = np.random.rand(1000, 10) * 2 - 1  # Values between -1 and 1
-    return states
 
 def save_training_plot(history, model_key):
     """Save a plot of the training history."""

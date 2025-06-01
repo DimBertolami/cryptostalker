@@ -29,13 +29,16 @@ const PredictionStatus: React.FC<PredictionStatusProps> = ({ isLoading, modelSta
     );
   }
 
-  const modelInfo = modelStatus.model_info || {};
-  const isInitialized = modelInfo.model_initialized || false;
-  const lastTraining = modelInfo.last_training_time ? new Date(modelInfo.last_training_time).toLocaleString() : 'Never';
-  const trainingStatus = modelInfo.training_status || {};
-  const isTraining = trainingStatus.is_training || false;
-  const trainingProgress = trainingStatus.progress || 0;
-  const lastPrediction = modelInfo.last_prediction_time ? new Date(modelInfo.last_prediction_time).toLocaleString() : 'Never';
+  // Extract values from the model status
+  const isInitialized = modelStatus.initialized || false;
+  const lastTraining = modelStatus.last_trained || modelStatus.last_training || 'Never';
+  const lastPrediction = modelStatus.last_prediction ? new Date(modelStatus.last_prediction).toLocaleString() : 'Never';
+  const modelType = modelStatus.model_type || 'Unknown';
+  const trained = modelStatus.trained || false;
+  
+  // Get prediction action and confidence if available
+  const predictionAction = modelStatus.prediction?.action || null;
+  const predictionConfidence = modelStatus.prediction?.confidence || null;
 
   return (
     <div className="bg-background-lighter border border-neutral-700 rounded-lg p-6">
@@ -59,53 +62,42 @@ const PredictionStatus: React.FC<PredictionStatusProps> = ({ isLoading, modelSta
           <span className="text-sm">{lastPrediction}</span>
         </div>
         
-        {isTraining && (
-          <div className="mt-4">
-            <div className="flex justify-between text-sm mb-1">
-              <span>Training Progress</span>
-              <span>{trainingProgress}%</span>
-            </div>
-            <div className="w-full bg-background rounded-full h-2.5">
-              <div 
-                className="bg-primary h-2.5 rounded-full" 
-                style={{ width: `${trainingProgress}%` }}
-              ></div>
-            </div>
+        {predictionAction && (
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-400">Latest Signal</span>
+            <span className={`px-2 py-1 rounded text-xs ${
+              predictionAction === 'BUY' ? 'bg-green-900 text-green-300' : 
+              predictionAction === 'SELL' ? 'bg-red-900 text-red-300' : 
+              'bg-yellow-900 text-yellow-300'
+            }`}>
+              {predictionAction} {predictionConfidence ? `(${(predictionConfidence * 100).toFixed(0)}%)` : ''}
+            </span>
           </div>
         )}
         
-        {modelInfo.model_type && (
-          <div className="mt-4 pt-4 border-t border-neutral-700">
-            <h4 className="text-sm font-medium mb-2">Model Configuration</h4>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-400">Model Type</span>
-                <span className="text-sm">{modelInfo.model_type}</span>
-              </div>
-              
-              {modelInfo.actor_layers && (
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-400">Actor Layers</span>
-                  <span className="text-sm">{modelInfo.actor_layers.join(', ')}</span>
-                </div>
-              )}
-              
-              {modelInfo.critic_layers && (
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-400">Critic Layers</span>
-                  <span className="text-sm">{modelInfo.critic_layers.join(', ')}</span>
-                </div>
-              )}
-              
-              {modelInfo.learning_rate && (
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-400">Learning Rate</span>
-                  <span className="text-sm">{modelInfo.learning_rate}</span>
-                </div>
-              )}
+        <div className="mt-4 pt-4 border-t border-neutral-700">
+          <h4 className="text-sm font-medium mb-2">Model Configuration</h4>
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-400">Model Type</span>
+              <span className="text-sm">{modelType}</span>
             </div>
+            
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-400">Trained</span>
+              <span className={`px-2 py-1 rounded text-xs ${trained ? 'bg-green-900 text-green-300' : 'bg-yellow-900 text-yellow-300'}`}>
+                {trained ? 'Yes' : 'No'}
+              </span>
+            </div>
+            
+            {modelStatus.symbols_available && (
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-400">Available Symbols</span>
+                <span className="text-sm">{modelStatus.symbols_available.length}</span>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

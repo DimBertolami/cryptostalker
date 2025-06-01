@@ -5,8 +5,8 @@
  */
 
 // Base URLs for API endpoints
-const PREDICTION_API_BASE_URL = '/api/prediction';
-const CCXT_API_BASE_URL = '/api/ccxt';
+const PREDICTION_API_BASE_URL = 'http://localhost:5001/api/prediction';
+const CCXT_API_BASE_URL = 'http://localhost:5001/api/ccxt';
 
 // Helper function to handle API requests
 async function apiRequest(url: string, options: RequestInit = {}) {
@@ -106,10 +106,20 @@ export const fetchHistoricalData = async (params: {
     console.log('Fetching historical data from:', url);
     const result = await apiRequest(url);
     console.log('Historical data response:', result);
-    return result;
+    
+    // Extract chart_data from response if it exists
+    const chartData = result?.chart_data?.data;
+    
+    // Ensure we always return an array
+    if (!Array.isArray(chartData)) {
+      console.warn('chart_data.data is not an array:', chartData);
+      return [];
+    }
+    
+    return chartData;
   } catch (error: unknown) {
     console.error('Error fetching historical data:', error);
-    throw error;
+    return []; // Return empty array on error
   }
 };
 

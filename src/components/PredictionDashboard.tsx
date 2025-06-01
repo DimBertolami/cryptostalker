@@ -46,21 +46,23 @@ const PredictionDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Add PredictionStatus component at the top */}
+      <PredictionStatus 
+        isLoading={isLoading} 
+        modelStatus={modelStatus} 
+      />
+      
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column - Status and Controls */}
+        {/* Left column - Controls */}
         <div className="lg:col-span-1 space-y-6">
-          <PredictionStatus 
-            isLoading={isLoading} 
-            modelStatus={modelStatus} 
-          />
-          <PredictionControls 
+          <PredictionControls
             selectedSymbol={selectedSymbol}
             selectedExchange={selectedExchange}
             timeframe={timeframe}
             onSymbolChange={handleSymbolChange}
             onExchangeChange={handleExchangeChange}
             onTimeframeChange={handleTimeframeChange}
-            isModelInitialized={modelStatus?.model_info?.model_initialized || false}
+            isModelInitialized={modelStatus?.model_info?.initialized || false}
           />
         </div>
 

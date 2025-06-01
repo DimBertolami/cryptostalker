@@ -1,0 +1,7 @@
+README.md
+setup.py
+cryptostalker.egg-info/PKG-INFO
+cryptostalker.egg-info/SOURCES.txt
+cryptostalker.egg-info/dependency_links.txt
+cryptostalker.egg-info/requires.txt
+cryptostalker.egg-info/top_level.txt
