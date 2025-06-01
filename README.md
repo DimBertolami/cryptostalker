@@ -3,6 +3,9 @@
 
 (Jupiter terminal)
 ![image](https://github.com/user-attachments/assets/21dbd4f6-1ea1-4d91-8bb4-a92b25cf45bc)
+(this provides easy access to jupiter, as you might imagine)
+![image](https://github.com/user-attachments/assets/08376099-4e9f-4c79-b744-a2233fe23d94)
+
 (predictions)
 ![image](https://github.com/user-attachments/assets/d86d0a55-c7c8-4b4c-ab54-2e25d8f720be)
 (exchange settings)
