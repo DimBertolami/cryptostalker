@@ -15,20 +15,15 @@ export interface QuoteCurrency {
 
 export interface Cryptocurrency {
   id: string;
-  name: string;
   symbol: string;
+  name: string;
+  platform?: string;
   current_price: number;
   price_change_percentage_24h: number;
   market_cap: number;
-  total_volume?: number; // Made optional
-  age_hours: number | null;
+  volume_24h: number;
   date_added: string;
-  volume_24h?: number; // Often part of quote, made optional if used directly
-  price_history?: PricePoint[]; // Typed and made optional
-  consecutive_decreases?: number; // Made optional
-  quote?: {
-    [key: string]: QuoteCurrency; // e.g., USD, BTC, ETH
-  };
+  [key: string]: any; // Allow additional properties
 }
 
 export interface PurchaseEvent {

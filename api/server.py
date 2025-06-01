@@ -14,6 +14,10 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_caching import Cache
 from dotenv import load_dotenv
+from functools import wraps
+from flask import request, jsonify
+import jwt
+import os
 
 # Load environment variables first
 try:
@@ -24,6 +28,7 @@ import ccxt
 from supabase import create_client, Client
 from flask import Blueprint
 from api.utils.encryption import encrypt_data, decrypt_data
+from api.utils.crypto_supabase import insert_cryptocurrencies, get_cryptocurrencies
 
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -100,51 +105,87 @@ def get_current_user_id_placeholder():
     # Option 3: Raise error until auth is implemented (commented out for Option 1 to work)
     # raise NotImplementedError("User authentication not implemented. Cannot get user_id.")
 
+def jwt_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        if 'Authorization' in request.headers:
+            token = request.headers['Authorization'].split(" ")[1]
+        
+        if not token:
+            return jsonify({'message': 'Token is missing'}), 401
+            
+        try:
+            data = jwt.decode(token, os.getenv('JWT_SECRET_KEY'), algorithms=['HS256'])
+            request.user_id = data['user_id']
+        except Exception as e:
+            return jsonify({'message': 'Token is invalid', 'error': str(e)}), 401
+            
+        return f(*args, **kwargs)
+    return decorated
+
 @exchange_configurations_bp.route('/', methods=['POST'])
+@jwt_required
 def create_exchange_configuration():
+    app.logger.info("Create exchange config request received")
     if not supabase:
+        app.logger.error("Supabase client not initialized")
         return jsonify({"error": "Supabase client not initialized"}), 500
+    
     try:
-        user_id = get_current_user_id_placeholder() # Replace with actual user ID from auth
+        user_id = request.user_id
+        app.logger.info(f"Using user_id: {user_id}")
     except (NotImplementedError, ValueError) as e:
+        app.logger.error(f"User ID error: {str(e)}")
         return jsonify({"error": str(e)}), 401
 
     data = request.get_json()
+    app.logger.info(f"Request data: {data}")
     if not data:
+        app.logger.error("No JSON payload received")
         return jsonify({"error": "Invalid JSON payload"}), 400
 
     required_fields = ['exchange_id_name', 'api_key', 'api_secret']
     if not all(field in data for field in required_fields):
-        return jsonify({"error": f"Missing one or more required fields: {', '.join(required_fields)}"}), 400
+        app.logger.error(f"Missing required fields: {required_fields}")
+        return jsonify({"error": f"Missing required fields: {', '.join(required_fields)}"}), 400
 
     try:
         new_config = {
             "user_id": user_id,
             "exchange_id_name": data['exchange_id_name'],
-            "nickname": data.get('nickname'),
             "api_key_encrypted": encrypt_data(data['api_key']),
             "secret_key_encrypted": encrypt_data(data['api_secret']),
-            "password_encrypted": encrypt_data(data['password']) if data.get('password') else None,
+            "nickname": data.get('nickname', data['exchange_id_name'])
         }
-        current_app.logger.info(f"Attempting to insert new_config: {new_config}") # Cascade Debug Log
+        
+        if 'password' in data:
+            new_config['password_encrypted'] = encrypt_data(data['password'])
+
+        app.logger.info(f"Attempting to insert config: {new_config}")
         response = supabase.table('exchange_configurations').insert(new_config).execute()
         
         if response.data:
+            app.logger.info(f"Successfully created config: {response.data}")
             return jsonify(response.data[0]), 201
         elif response.error:
+            app.logger.error(f"Supabase error: {response.error.message}")
             return jsonify({"error": "Failed to create exchange configuration", "details": response.error.message}), 500
         else:
+            app.logger.error("Unknown Supabase error")
             return jsonify({"error": "Failed to create exchange configuration", "details": "Unknown error"}), 500
 
     except Exception as e:
+        app.logger.error(f"Unexpected error: {str(e)}", exc_info=True)
         return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
 
 @exchange_configurations_bp.route('/', methods=['GET'])
+@jwt_required
 def get_exchange_configurations_list():
     if not supabase:
         return jsonify({"error": "Supabase client not initialized"}), 500
     try:
-        user_id = get_current_user_id_placeholder() # Replace with actual user ID from auth
+        user_id = request.user_id # Replace with actual user ID from auth
     except (NotImplementedError, ValueError) as e:
         return jsonify({"error": str(e)}), 401
 
@@ -165,11 +206,12 @@ def get_exchange_configurations_list():
         return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
 
 @exchange_configurations_bp.route('/<uuid:config_id>', methods=['GET'])
+@jwt_required
 def get_single_exchange_configuration(config_id):
     if not supabase:
         return jsonify({"error": "Supabase client not initialized"}), 500
     try:
-        user_id = get_current_user_id_placeholder() # Replace with actual user ID from auth
+        user_id = request.user_id # Replace with actual user ID from auth
     except (NotImplementedError, ValueError) as e:
         return jsonify({"error": str(e)}), 401
 
@@ -204,11 +246,12 @@ def get_single_exchange_configuration(config_id):
         return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
 
 @exchange_configurations_bp.route('/<uuid:config_id>', methods=['PUT'])
+@jwt_required
 def update_exchange_configuration(config_id):
     if not supabase:
         return jsonify({"error": "Supabase client not initialized"}), 500
     try:
-        user_id = get_current_user_id_placeholder() # Replace with actual user ID from auth
+        user_id = request.user_id # Replace with actual user ID from auth
     except (NotImplementedError, ValueError) as e:
         return jsonify({"error": str(e)}), 401
 
@@ -249,11 +292,12 @@ def update_exchange_configuration(config_id):
         return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
 
 @exchange_configurations_bp.route('/<uuid:config_id>', methods=['DELETE'])
+@jwt_required
 def delete_exchange_configuration(config_id):
     if not supabase:
         return jsonify({"error": "Supabase client not initialized"}), 500
     try:
-        user_id = get_current_user_id_placeholder() # Replace with actual user ID from auth
+        user_id = request.user_id # Replace with actual user ID from auth
     except (NotImplementedError, ValueError) as e:
         return jsonify({"error": str(e)}), 401
 
@@ -384,6 +428,7 @@ def handle_ccxt_errors(func):
     return wrapper
 
 @ccxt_bp.route('/balance', methods=['GET'])
+@jwt_required
 @handle_ccxt_errors
 def get_exchange_balance():
     """Retrieve balance from a specific exchange."""
@@ -392,7 +437,7 @@ def get_exchange_balance():
         return jsonify({"error": "Missing 'exchange_id' parameter"}), 400
     
     try:
-        user_id = get_current_user_id_placeholder()
+        user_id = request.user_id
     except (NotImplementedError, ValueError) as e:
         return jsonify({"error": str(e)}), 401
     
@@ -437,6 +482,7 @@ def get_exchange_balance():
         raise
 
 @ccxt_bp.route('/create_order', methods=['POST'])
+@jwt_required
 @handle_ccxt_errors
 def create_exchange_order():
     """Create an order on a specific exchange."""
@@ -460,7 +506,7 @@ def create_exchange_order():
     params = data.get('params', {}) # Additional exchange-specific parameters
     
     try:
-        user_id = get_current_user_id_placeholder()
+        user_id = request.user_id
     except (NotImplementedError, ValueError) as e:
         return jsonify({"error": str(e)}), 401
     
@@ -511,6 +557,7 @@ def create_exchange_order():
         raise
 
 @ccxt_bp.route('/open_orders', methods=['GET'])
+@jwt_required
 @handle_ccxt_errors
 def get_open_orders():
     """Retrieve open orders from a specific exchange."""
@@ -521,7 +568,7 @@ def get_open_orders():
         return jsonify({"error": "Missing 'exchange_id' parameter"}), 400
     
     try:
-        user_id = get_current_user_id_placeholder()
+        user_id = request.user_id
     except (NotImplementedError, ValueError) as e:
         return jsonify({"error": str(e)}), 401
     
@@ -551,6 +598,7 @@ def get_open_orders():
         raise
 
 @ccxt_bp.route('/cancel_order', methods=['POST'])
+@jwt_required
 @handle_ccxt_errors
 def cancel_exchange_order():
     """Cancel an order on a specific exchange."""
@@ -568,7 +616,7 @@ def cancel_exchange_order():
     symbol = data.get('symbol')  # Optional but recommended for some exchanges
     
     try:
-        user_id = get_current_user_id_placeholder()
+        user_id = request.user_id
     except (NotImplementedError, ValueError) as e:
         return jsonify({"error": str(e)}), 401
     
@@ -615,6 +663,7 @@ app.register_blueprint(prediction_bp)
 
 # --- Price Endpoint ---
 @app.route('/api/price/<string:symbol>', methods=['GET'])
+@jwt_required
 @limiter.limit("10/minute") # Example rate limit: 10 requests per minute per IP
 @cache.cached(timeout=60)    # Cache results for 60 seconds
 def get_price(symbol):
@@ -690,11 +739,13 @@ def get_price(symbol):
 # Add other blueprints here if you create more
 
 @app.route("/api/new-cryptos")
+@jwt_required
 def new_cryptos():
     coins = get_recent_cryptos()
     return jsonify(coins)
 
 @app.route('/api/test', methods=['GET'])
+@jwt_required
 def test_endpoint():
     """A simple test endpoint to verify that the API server is working properly."""
     return jsonify({
@@ -705,6 +756,7 @@ def test_endpoint():
 
 @app.route('/api/cmc-proxy', methods=['GET'])
 # @limiter.limit("5 per minute")  # 5 requests per minute max
+@jwt_required
 @cache.cached(timeout=60, query_string=True)  # Cache for 60 seconds
 def cmc_proxy():
     endpoint = request.args.get('endpoint')
@@ -824,6 +876,7 @@ def cmc_proxy():
         }), 500
 
 @app.route('/api/ccxt/exchanges', methods=['GET'])
+@jwt_required
 def list_ccxt_exchanges():
     """Returns a list of all exchange IDs supported by CCXT."""
     try:
@@ -834,6 +887,7 @@ def list_ccxt_exchanges():
 
 @app.route('/api/ccxt/test_exchange_markets', methods=['GET'])
 # @limiter.limit("10 per minute") # Optional: consider rate limiting later
+@jwt_required
 def test_ccxt_exchange_markets():
     """Tests loading markets for a given CCXT exchange ID."""
     exchange_id = request.args.get('exchange_id')
@@ -899,6 +953,7 @@ def test_ccxt_exchange_markets():
         }), 500
 
 @app.route('/api/trading/portfolio', methods=['GET'])
+@jwt_required
 @cache.cached(timeout=60)  # Cache for 1 minute
 def get_portfolio():
     try:
@@ -1012,6 +1067,7 @@ def get_portfolio_positions():
     ]
 
 @app.route('/api/trading/history/<symbol>', methods=['GET'])
+@jwt_required
 def get_price_history(symbol):
     try:
         print(f"Fetching price history for {symbol}...")
@@ -1077,6 +1133,7 @@ def get_price_history(symbol):
         return error_response
 
 @app.route('/api/bitvavo/order', methods=['POST'])
+@jwt_required
 def bitvavo_place_order():
     if not bitvavo_client:
         return jsonify({"error": "Bitvavo client not initialized. Check API keys."}), 500
@@ -1130,6 +1187,36 @@ def bitvavo_place_order():
             return jsonify({"error": "Bitvavo API error", "details": error_details}), 500
         except json.JSONDecodeError:
             return jsonify({"error": "Failed to place Bitvavo order", "details": error_message}), 500
+
+@app.route('/api/cryptocurrencies', methods=['POST'])
+@jwt_required
+def save_cryptocurrencies():
+    try:
+        data = request.get_json()
+        if not data or not isinstance(data, list):
+            return jsonify({'error': 'Invalid data format - expected array of cryptocurrencies'}), 400
+            
+        # Basic validation
+        required_fields = {'id', 'symbol', 'name', 'platform'}
+        for crypto in data:
+            if not all(field in crypto for field in required_fields):
+                return jsonify({'error': f'Missing required fields. Each crypto must have: {required_fields}'}), 400
+        
+        # Insert into Supabase
+        result = insert_cryptocurrencies(data)
+        return jsonify({'success': True, 'count': len(result), 'data': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/cryptocurrencies', methods=['GET'])
+@jwt_required
+def list_cryptocurrencies():
+    try:
+        symbols = request.args.getlist('symbols[]')
+        cryptos = get_cryptocurrencies(symbols if symbols else None)
+        return jsonify(cryptos)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=False)

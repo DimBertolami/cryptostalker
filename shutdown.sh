@@ -13,7 +13,7 @@ pkill -f "vite" || echo "No Vite processes found"
 
 # Kill any existing Flask processes
 echo "Killing Flask processes..."
-pkill -f "python3.*server.py" || echo "No Flask processes found"
+pkill -f "flask run" || pkill -f "python3.*server.py" || echo "No Flask processes found"
 
 # Kill any processes on port 5001 (API server)
 

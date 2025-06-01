@@ -1,29 +1,50 @@
 import { create } from 'zustand';
 import { CryptoState, Trade, TradeableCrypto, Cryptocurrency, PurchaseEvent } from '../types';
+import toast from 'react-hot-toast';
 
-// Define a type for the API response that includes all possible fields
-interface ApiCryptocurrency extends Omit<Cryptocurrency, 'price_history' | 'consecutive_decreases'> {
-  price_history?: number[];
-  consecutive_decreases?: number;
+async function fetchNewCoinsFromCoinMarketCap(): Promise<Cryptocurrency[]> {
+    try {
+        const response = await fetch('/api/new-cryptos');
+        if (!response.ok) throw new Error('Failed to fetch from CoinMarketCap');
+        const data = await response.json();
+        return data.map((c: any) => ({
+            id: c.id,
+            symbol: c.symbol,
+            name: c.name,
+            platform: c.platform?.name || 'unknown',
+            current_price: c.current_price || 0,
+            price_change_percentage_24h: c.price_change_percentage_24h || 0,
+            market_cap: c.market_cap || 0,
+            volume_24h: c.volume_24h || 0,
+            date_added: c.date_added || new Date().toISOString()
+        }));
+    } catch (error) {
+        console.error('Error fetching from CoinMarketCap:', error);
+        return [];
+    }
 }
 
-// Helper function to create a Cryptocurrency object with all required fields
-const createCryptocurrency = (data: Partial<Cryptocurrency>): Cryptocurrency => ({
-  id: data.id || '',
-  name: data.name || '',
-  symbol: data.symbol || '',
-  current_price: data.current_price ?? 0,
-  price_change_percentage_24h: data.price_change_percentage_24h ?? 0,
-  market_cap: data.market_cap ?? 0,
-  total_volume: data.total_volume ?? 0,
-  age_hours: data.age_hours ?? null,
-  date_added: data.date_added || new Date().toISOString(),
-  volume_24h: data.volume_24h ?? 0,
-  price_history: [],
-  consecutive_decreases: 0
-});
-import { fetchNewCryptocurrencies, fetchCryptoById, fetchNewCoinsFromCoinGecko } from '../services/apiService';
-import toast from 'react-hot-toast';
+async function fetchNewCoinsFromCoinGecko(): Promise<Cryptocurrency[]> {
+    try {
+        const response = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1');
+        if (!response.ok) throw new Error('Failed to fetch from CoinGecko');
+        const data = await response.json();
+        return data.map((c: any) => ({
+            id: c.id,
+            symbol: c.symbol,
+            name: c.name,
+            platform: c.platform?.name || 'unknown',
+            current_price: c.current_price || 0,
+            price_change_percentage_24h: c.price_change_percentage_24h_in_currency || 0,
+            market_cap: c.market_cap || 0,
+            volume_24h: c.total_volume || 0,
+            date_added: c.last_updated || new Date().toISOString()
+        }));
+    } catch (error) {
+        console.error('Error fetching from CoinGecko:', error);
+        return [];
+    }
+}
 
 const useCryptoStore = create<CryptoState & { fetchSource: string; setFetchSource: (source: string) => void }>((set, get) => ({
   cryptos: [],
@@ -83,464 +104,48 @@ const useCryptoStore = create<CryptoState & { fetchSource: string; setFetchSourc
   
   setShowAllCryptos: (showAll) => set({ showAllCryptos: showAll }),
   
-  fetchCryptos: async (showAll = false) => {
-    const { isPaused, autoRefresh, focusedMonitoring, monitoredCrypto } = get();
-    
-    if (isPaused) return;
-    
-    // If showing all cryptos, just fetch without any filters
-    if (showAll || get().showAllCryptos) {
-      set({ loading: true, error: null });
-      try {
-        // Use fetchSource to determine which API to use
-        const fetchSource = get().fetchSource;
-        let allCryptos: any[] = [];
-        
-        // Handle standard sources
-        if (fetchSource === 'coingecko') {
-          allCryptos = await fetchNewCoinsFromCoinGecko();
-        } else if (fetchSource === 'coinmarketcap') {
-          allCryptos = await fetchNewCryptocurrencies();
-        } else if (fetchSource.startsWith('exchange:')) {
-          // Extract exchange name from the fetchSource string
-          const exchangeName = fetchSource.split(':')[1];
-          // Here we would fetch data from the exchange API
-          // For now, let's use a placeholder and show a toast message
-          toast.success(`Fetching data from ${exchangeName} exchange...`);
-          try {
-            // This would be replaced with actual exchange API call
-            // For example: allCryptos = await fetchFromExchange(exchangeName);
-            allCryptos = [];
-            toast.success(`Successfully connected to ${exchangeName}`);
-          } catch (error) {
-            console.error(`Error fetching from ${exchangeName}:`, error);
-            toast.error(`Failed to fetch from ${exchangeName}`);
-            allCryptos = [];
-          }
-        } else {
-          // Default to coinmarketcap
-          allCryptos = await fetchNewCryptocurrencies();
-        }
-      console.log('[DEBUG] Raw cryptos fetched (could be CMC or CoinGecko):', allCryptos);
-      if (Array.isArray(allCryptos)) {
-        if (allCryptos.length === 0) {
-          console.warn('[DEBUG] No cryptos returned from fetchNewCryptocurrencies');
-        } else {
-          console.log(`[DEBUG] First crypto fetched:`, allCryptos[0]);
-        }
-      } else {
-        console.error('[DEBUG] fetchNewCryptocurrencies did not return an array:', allCryptos);
-      }
-        const mappedCryptos = allCryptos.map((c: any): Cryptocurrency => {
-          const price = c.current_price ?? c.price ?? 0;
-          const volume24h = c.volume_24h ?? 0;
-          const marketCap = c.market_cap ?? 0;
-          const priceChange24h = c.price_change_percentage_24h ?? 0;
-          const totalVolume = c.total_volume ?? 0;
-          
-          return {
-            id: c.id || '',
-            name: c.name || '',
-            symbol: c.symbol || '',
-            current_price: price,
-            price_change_percentage_24h: priceChange24h,
-            market_cap: marketCap,
-            total_volume: totalVolume,
-            age_hours: c.age_hours ?? null,
-            date_added: c.date_added || new Date().toISOString(),
-            volume_24h: volume24h,
-            price_history: [],
-            consecutive_decreases: 0
-          } as Cryptocurrency;
-        });
-        
-        const processedCryptos = mappedCryptos.map((c: any): Cryptocurrency => {
-          const price = c.current_price ?? c.price ?? 0;
-          const volume24h = c.volume_24h ?? 0;
-          const marketCap = c.market_cap ?? 0;
-          const priceChange24h = c.price_change_percentage_24h ?? 0;
-          const totalVolume = c.total_volume ?? 0;
-          
-          return {
-            id: c.id || '',
-            name: c.name || '',
-            symbol: c.symbol || '',
-            current_price: price,
-            price_change_percentage_24h: priceChange24h,
-            market_cap: marketCap,
-            total_volume: totalVolume,
-            age_hours: c.age_hours ?? null,
-            date_added: c.date_added || new Date().toISOString(),
-            volume_24h: volume24h,
-            price_history: [],
-            consecutive_decreases: 0
-          };
-        });
-        
-        // Update state with the processed data
-        set({
-          cryptos: processedCryptos,
-          loading: false,
-          error: null,
-          lastUpdated: new Date().toISOString()
-        });
-        
-        // If we're showing all cryptos, update the newCryptos as well
-        if (get().showAllCryptos) {
-          set({ newCryptos: processedCryptos });
-        }
-        return;
-      } catch (error) {
-        console.error('Error fetching all cryptos:', error);
-        set({ error: 'Failed to fetch all cryptocurrencies' });
-        set({ loading: false });
-        return;
-      }
-    }
-    
+  fetchCryptos: async () => {  
     try {
-      // If focused monitoring is on and we have a monitored crypto,
-      // only fetch data for that specific crypto
-      if (focusedMonitoring && monitoredCrypto && autoRefresh) {
-        set({ loading: true, error: null });
+        set({ loading: true });
         
-        console.log(`🔍 Focused monitoring enabled for ${monitoredCrypto.name}...`);
+        const fetchSource = get().fetchSource;
+        let allCryptos: Cryptocurrency[] = [];
         
-        // Only fetch the monitored coin to reduce API calls
-        const singleCoin = await fetchCryptoById(monitoredCrypto.id);
-        if (!singleCoin) throw new Error(`Failed to fetch data for ${monitoredCrypto.name}`);
-        
-        // Update just this coin's price history
-        const { highValueCryptos } = get();
-        const updatedHighValueCryptos = [...highValueCryptos];
-        
-        const existingIndex = updatedHighValueCryptos.findIndex(c => c.id === singleCoin.id);
-        if (existingIndex >= 0) {
-          const existingCrypto = updatedHighValueCryptos[existingIndex];
-          const priceHistory = [...(existingCrypto.price_history || [])];
-          
-          // Get the current price safely
-          const currentPrice = singleCoin.current_price ?? 0;
-          
-          // Always add price to history
-          priceHistory.push({ timestamp: Date.now(), price: currentPrice });
-          
-          // Keep only the last 100 price points
-          if (priceHistory.length > 100) {
-            priceHistory.shift();
-          }
-          
-          // Calculate consecutive price decreases
-          let consecutiveDecreases = 0;
-          if (priceHistory.length >= 2) {
-            for (let i = priceHistory.length - 1; i > 0; i--) {
-              if (priceHistory[i] < priceHistory[i - 1]) {
-                consecutiveDecreases++;
-              } else {
-                break;
-              }
-            }
-          }
-                    // Create a safe crypto object with all required fields
-          const updatedCrypto: Cryptocurrency = {
-            id: singleCoin.id || '',
-            name: singleCoin.name || '',
-            symbol: singleCoin.symbol || '',
-            current_price: singleCoin.current_price ?? 0,
-            price_change_percentage_24h: singleCoin.price_change_percentage_24h ?? 0,
-            market_cap: singleCoin.market_cap ?? 0,
-            // Use volume_24h instead of total_volume to match the Cryptocurrency interface
-            volume_24h: singleCoin.volume_24h ?? 0,
-            age_hours: singleCoin.age_hours ?? 0,
-            date_added: singleCoin.date_added || new Date().toISOString(),
-            price_history: Array.isArray(existingCrypto?.price_history) ? 
-              [...existingCrypto.price_history, singleCoin.current_price ?? 0] : 
-              [singleCoin.current_price ?? 0],
-            consecutive_decreases: existingCrypto ? 
-              ((singleCoin.current_price ?? 0) < (existingCrypto.current_price ?? 0) ? 
-                ((existingCrypto as any).consecutive_decreases || 0) + 1 : 0) : 0
-          } as Cryptocurrency;
-          
-          updatedHighValueCryptos[existingIndex] = updatedCrypto;
-        } else {
-          // Add new high value crypto with safe default value
-          const safePrice = singleCoin.current_price ?? 0;
-          const newCrypto: Cryptocurrency = {
-            id: singleCoin.id || '',
-            name: singleCoin.name || '',
-            symbol: singleCoin.symbol || '',
-            current_price: safePrice,
-            price_change_percentage_24h: singleCoin.price_change_percentage_24h ?? 0,
-            market_cap: singleCoin.market_cap ?? 0,
-            // Use volume_24h instead of total_volume to match the Cryptocurrency interface
-            volume_24h: singleCoin.volume_24h ?? 0,
-            age_hours: singleCoin.age_hours ?? 0,
-            date_added: singleCoin.date_added || new Date().toISOString(),
-            price_history: [{ timestamp: Date.now(), price: safePrice }],
-            consecutive_decreases: 0
-          } as Cryptocurrency;
-          
-          updatedHighValueCryptos.push(newCrypto);
+        if (fetchSource === 'coingecko') {
+            allCryptos = await fetchNewCoinsFromCoinGecko();
+        } else if (fetchSource === 'coinmarketcap') {
+            allCryptos = await fetchNewCoinsFromCoinMarketCap();
         }
         
-        // Also update portfolio with new prices
-        const { portfolio } = get();
-        const updatedPortfolio = portfolio.map(position => {
-          if (position.id === (singleCoin as Cryptocurrency).id) {
-            const updatedPrice = (singleCoin as any).current_price ?? position.currentPrice;
-            const profitLoss = (updatedPrice - position.averageBuyPrice) * position.balance;
-            const profitLossPercentage = ((updatedPrice / position.averageBuyPrice) - 1) * 100;
-            
-            // Track highest price
-            let highestPrice = position.highestPrice;
-            let highestPriceTimestamp = position.highestPriceTimestamp;
-            
-            if (updatedPrice > highestPrice) {
-              highestPrice = updatedPrice;
-              highestPriceTimestamp = Date.now();
-            }
-            
-            
-            return {
-              ...position,
-              currentPrice: updatedPrice,
-              profitLoss: profitLoss,
-              profitLossPercentage: profitLossPercentage,
-              highestPrice,
-              highestPriceTimestamp
-            };
-          }
-          return position;
-        });
+        // Filter out any undefined prices
+        allCryptos = allCryptos.filter(c => c.current_price !== undefined);
         
-        set({
-          highValueCryptos: updatedHighValueCryptos,
-          portfolio: updatedPortfolio,
-          loading: false
-        });
-        
-        // Check if we should sell
-        const cryptoToCheck = updatedHighValueCryptos[existingIndex];
-        const consecutiveDecreases = 'consecutive_decreases' in cryptoToCheck ? 
-          (cryptoToCheck as any).consecutive_decreases as number : 0;
-          
-        if (existingIndex >= 0 && consecutiveDecreases >= 3) {
-          const position = updatedPortfolio.find(p => p.id === singleCoin.id);
-          if (position) {
-            const currentPrice = singleCoin.current_price ?? 0;
-            const profit = (currentPrice - position.averageBuyPrice) * position.balance;
-            const profitPercent = ((currentPrice / position.averageBuyPrice) - 1) * 100;
-            
-            // Update trading stats
-            const stats = get().tradingStats;
-            const newStats = {
-              totalProfit: stats.totalProfit + profit,
-              successfulTrades: profit >= 0 ? stats.successfulTrades + 1 : stats.successfulTrades,
-              failedTrades: profit < 0 ? stats.failedTrades + 1 : stats.failedTrades,
-              averageProfit: (stats.totalProfit + profit) / (stats.successfulTrades + stats.failedTrades + 1),
-              largestGain: profit > stats.largestGain ? profit : stats.largestGain,
-              largestLoss: profit < 0 && profit < stats.largestLoss ? profit : stats.largestLoss,
-              lastTradeProfit: profit
-            };
-            
-            // Sell after 3 consecutive decreases
-            const singleCoinData = singleCoin as unknown as ApiCryptocurrency;
-            const cryptoToSell = createCryptocurrency({
-              id: singleCoinData.id,
-              name: singleCoinData.name,
-              symbol: singleCoinData.symbol,
-              current_price: singleCoinData.current_price,
-              price_change_percentage_24h: singleCoinData.price_change_percentage_24h,
-              market_cap: singleCoinData.market_cap,
-              total_volume: singleCoinData.total_volume ?? singleCoinData.volume_24h,
-              age_hours: singleCoinData.age_hours,
-              volume_24h: singleCoinData.volume_24h,
-              date_added: singleCoinData.date_added
-            });
-            
-            get().sellManual(cryptoToSell, 1, 'bitvavo');
-            set({ 
-              monitoredCrypto: null,
-              focusedMonitoring: false,
-              tradingStats: newStats 
-            });
-            
-            // Show detailed profit information
-            if (profit >= 0) {
-              toast.success(
-                `💰 Profit! Auto-sold ${(singleCoin as Cryptocurrency).name} for +$${profit.toFixed(6)} (+${profitPercent.toFixed(2)}%)\n` +
-                `Total profit so far: $${newStats.totalProfit.toFixed(6)}`
-              );
-            } else {
-              toast.error(
-                `📉 Loss! Auto-sold ${(singleCoin as Cryptocurrency).name} for -$${Math.abs(profit).toFixed(6)} (${profitPercent.toFixed(2)}%)\n` +
-                `Total profit so far: $${newStats.totalProfit.toFixed(6)}`
-              );
-            }
-          }
-        }
-        
-        return;
-      }
-      
-      // Regular fetch for all cryptos
-      if (autoRefresh) {
-        set({ loading: true, error: null });
-        
-        // Fetch new cryptocurrencies
-        const cryptocurrencies = await fetchNewCryptocurrencies();
-        
-        if (!cryptocurrencies || cryptocurrencies.length === 0) {
-          throw new Error('Failed to fetch cryptocurrencies');
-        }
-        
-        // Process the data
-        const processedCryptos = cryptocurrencies.map((crypto: any): Cryptocurrency => {
-          // Calculate age in hours
-          const dateAdded = crypto.date_added ? new Date(crypto.date_added) : null;
-          const now = new Date();
-          const ageInHours = dateAdded ? (now.getTime() - dateAdded.getTime()) / (1000 * 60 * 60) : null;
-          
-          return {
-            id: crypto.id || '',
-            name: crypto.name || '',
-            symbol: crypto.symbol || '',
-            current_price: crypto.current_price ?? 0,
-            price_change_percentage_24h: crypto.price_change_percentage_24h ?? 0,
-            market_cap: crypto.market_cap ?? 0,
-            total_volume: crypto.total_volume ?? 0,
-            age_hours: ageInHours,
-            date_added: crypto.date_added || new Date().toISOString(),
-            volume_24h: crypto.volume_24h ?? 0,
-            price_history: [],
-            consecutive_decreases: 0
-          };
-        });
-        
-        // Filter for new coins - any coin added in the last 24 hours
-        // First ensure we have valid date_added and age_hours values
-        const validatedCryptos = processedCryptos.map(crypto => {
-            // If age_hours is missing, calculate it from date_added
-            if ((crypto as any).age_hours === undefined && crypto.date_added) {
-                try {
-                    const addedDate = new Date(crypto.date_added);
-                    const now = new Date();
-                    const ageHours = (now.getTime() - addedDate.getTime()) / (1000 * 60 * 60);
-                    return { ...crypto, age_hours: ageHours };
-                } catch (e) {
-                    console.error('Error calculating age for crypto:', crypto.name, e);
-                    return crypto;
+        // Save to Supabase
+        if (allCryptos.length > 0) {
+            try {
+                const response = await fetch('/api/cryptocurrencies', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}` 
+                    },
+                    body: JSON.stringify(allCryptos)
+                });
+                
+                if (!response.ok) {
+                    console.error('Failed to save cryptos:', await response.json());
                 }
+            } catch (e) {
+                console.error('Error saving cryptos:', e);
             }
-            return crypto;
-        });
-
-        // We no longer need mock data as we're using real-time CoinMarketCap data
-
-        // Filter for new coins - any coin added in the last 24 hours
-        let newCryptos = validatedCryptos.filter(crypto => {
-            const age = (crypto as any).age_hours;
-            return age !== undefined && age < 24;
-        });
-
-        // Log the number of new coins found
-        if (newCryptos.length === 0) {
-            console.log('No new coins found in the last 24 hours');
-        } else {
-            console.log(`Found ${newCryptos.length} new coins in the last 24 hours`);
-        }
-
-        // Filter for high value coins - any with a market cap over $1M or volume over $500K
-        const highValueCryptos = newCryptos.filter(crypto => {
-            const marketCap = crypto.market_cap || 0;
-            const volume = crypto.volume_24h || crypto.total_volume || 0;
-            return marketCap > 1000000 || volume > 500000;
-        });
-        
-        console.log(`Found ${newCryptos.length} new coins, ${highValueCryptos.length} high value`);
-        if (highValueCryptos.length > 0) {
-          console.log('High value coins:');
-          highValueCryptos.forEach((coin, index) => {
-            console.log(`${index + 1}) ${coin.name} (${coin.symbol.toUpperCase()})`);
-          });
         }
         
-        // Auto-buy high value coins if auto-trading is enabled
-        const { isAutoTrading } = get();
-        
-        if (isAutoTrading && highValueCryptos.length > 0 && !get().monitoredCrypto) {
-          // Randomly select one high value coin to buy
-          const randomIndex = Math.floor(Math.random() * highValueCryptos.length);
-          const coinToBuy = highValueCryptos[randomIndex];
-          
-          // Buy the coin
-          // Remove unused boughtTrade variable and directly call buyManual
-        get().buyManual(coinToBuy, 1, 'bitvavo');
-          
-          // Set it as the monitored crypto
-          set({
-            monitoredCrypto: coinToBuy,
-            focusedMonitoring: true
-          });
-          
-          toast.success(`🔥 Auto-bought high value coin: ${coinToBuy.name} (${coinToBuy.symbol.toUpperCase()})`);
-          
-          // Log debug info
-          const marketCap = coinToBuy.market_cap || (coinToBuy.quote?.USD?.market_cap ?? 0);
-          const volume = coinToBuy.volume_24h || (coinToBuy.quote?.USD?.volume_24h ?? 0);
-          console.log(`Auto-bought ${coinToBuy.name}: Market Cap $${(marketCap/1000000).toFixed(2)}M, Volume $${(volume/1000000).toFixed(2)}M`);
-        }
-        
-        // Update the store state with the fetched and processed data
-        set({
-          cryptos: processedCryptos,
-          newCryptos,
-          highValueCryptos,
-          loading: false
-        });
-        
-        // Update portfolio with latest prices
-        const { portfolio } = get();
-        if (portfolio.length > 0) {
-          const updatedPortfolio = portfolio.map(position => {
-            const updatedCrypto = processedCryptos.find(c => c.id === position.id);
-            
-            if (updatedCrypto) {
-              const updatedPrice = (updatedCrypto as any).current_price ?? position.currentPrice;
-              const profitLoss = (updatedPrice - position.averageBuyPrice) * position.balance;
-              const profitLossPercentage = ((updatedPrice / position.averageBuyPrice) - 1) * 100;
-              
-              // Track highest price
-              let highestPrice = position.highestPrice;
-              let highestPriceTimestamp = position.highestPriceTimestamp;
-              
-              if (updatedPrice > highestPrice) {
-                highestPrice = updatedPrice;
-                highestPriceTimestamp = Date.now();
-              }
-              
-              return {
-                ...position,
-                currentPrice: updatedPrice,
-                profitLoss: profitLoss,
-                profitLossPercentage: profitLossPercentage,
-                highestPrice,
-                highestPriceTimestamp
-              };
-            }
-            
-            return position;
-          });
-          
-          set({ portfolio: updatedPortfolio });
-        }
-      }
+        set({ newCryptos: allCryptos, loading: false });
     } catch (error) {
-      console.error('Error fetching cryptocurrencies:', error);
-      set({ 
-        loading: false, 
-        error: error instanceof Error ? error.message : 'An unknown error occurred' 
-      });
+        set({ 
+            error: error instanceof Error ? error.message : String(error), 
+            loading: false 
+        });
     }
   },
   
@@ -1035,23 +640,8 @@ sellManual: async (crypto: Cryptocurrency | TradeableCrypto, amount: number, exc
         const profitLossPercentage = positionToUpdate.averageBuyPrice === 0 ? 0 : ((actualSellPrice / positionToUpdate.averageBuyPrice) - 1) * 100;
         console.log(`Sold entire position of ${crypto.symbol}: Profit/Loss: $${profitLoss.toFixed(6)} (${profitLossPercentage.toFixed(2)}%)`);
       } else {
-        const updatedPortfolio = portfolioAfterTrade.map(p => {
-          if (p.id === crypto.id) {
-            const newBalance = p.balance - actualAmountSold;
-            // Average buy price doesn't change on sell
-            const currentMarketPrice = p.currentPrice || actualSellPrice;
-            const newNetProfitLoss = (currentMarketPrice - p.averageBuyPrice) * newBalance; // Profit/loss on remaining balance
-            const newNetProfitLossPercentage = p.averageBuyPrice === 0 ? 0 : ((currentMarketPrice / p.averageBuyPrice) - 1) * 100;
-            return {
-              ...p,
-              balance: newBalance,
-              profitLoss: newNetProfitLoss,
-              profitLossPercentage: newNetProfitLossPercentage,
-            };
-          }
-          return p;
-        });
-        set({ portfolio: updatedPortfolio });
+        positionToUpdate.balance -= actualAmountSold;
+        set({ portfolio: portfolioAfterTrade });
       }
 
       toast.success(`Live ${exchange} sell: ${actualAmountSold.toFixed(6)} ${crypto.symbol.toUpperCase()} at $${actualSellPrice.toLocaleString()}`);
@@ -1097,22 +687,8 @@ sellManual: async (crypto: Cryptocurrency | TradeableCrypto, amount: number, exc
       set(state => ({ portfolio: state.portfolio.filter(p => p.id !== crypto.id) }));
       console.log(`Sold entire position of ${crypto.symbol}: Profit/Loss: $${profitLoss.toFixed(6)} (${profitLossPercentage.toFixed(2)}%)`);
     } else {
-      const updatedPortfolio = currentPortfolio.map(p => {
-        if (p.id === crypto.id) {
-          const newBalance = p.balance - amount;
-          const currentMarketPrice = p.currentPrice || price;
-          const newNetProfitLoss = (currentMarketPrice - p.averageBuyPrice) * newBalance;
-          const newNetProfitLossPercentage = p.averageBuyPrice === 0 ? 0 : ((currentMarketPrice / p.averageBuyPrice) - 1) * 100;
-          return {
-            ...p,
-            balance: newBalance,
-            profitLoss: newNetProfitLoss,
-            profitLossPercentage: newNetProfitLossPercentage,
-          };
-        }
-        return p;
-      });
-      set({ portfolio: updatedPortfolio });
+      position.balance -= amount;
+      set({ portfolio: currentPortfolio });
     }
 
     toast.success(`${tradeType} sell: ${amount} ${crypto.symbol.toUpperCase()} at $${price.toLocaleString()}`);
