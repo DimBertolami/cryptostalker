@@ -61,7 +61,7 @@ const PredictionChart: React.FC<PredictionChartProps> = ({
         // Add prediction to chart data
         if (predictionResult && formattedData.length > 0) {
           const lastDataPoint = formattedData[formattedData.length - 1];
-          const signalText = predictionResult.signal_text;
+          const signalText = predictionResult.signal_text || predictionResult.action;
           const confidence = predictionResult.confidence;
           
           // Add prediction marker to the last data point
@@ -150,7 +150,9 @@ const PredictionChart: React.FC<PredictionChartProps> = ({
 
   // Determine colors based on prediction
   const signalColor = prediction?.signal_text === 'BUY' ? '#4ade80' : 
-                      prediction?.signal_text === 'SELL' ? '#f87171' : '#94a3b8';
+                      prediction?.signal_text === 'SELL' ? '#f87171' : 
+                      prediction?.action === 'BUY' ? '#4ade80' : 
+                      prediction?.action === 'SELL' ? '#f87171' : '#94a3b8';
 
   return (
     <div className="bg-background-lighter border border-neutral-700 rounded-lg p-6">
@@ -160,10 +162,10 @@ const PredictionChart: React.FC<PredictionChartProps> = ({
           <div className="flex items-center space-x-4">
             <div className="px-3 py-1 rounded text-sm" 
                  style={{ backgroundColor: signalColor + '33', color: signalColor }}>
-              Signal: {prediction.signal_text}
+              Signal: {prediction.signal_text || prediction.action}
             </div>
             <div className="text-sm">
-              Confidence: {(prediction.confidence * 100).toFixed(1)}%
+              Confidence: {prediction.confidence ? `${(prediction.confidence * 100).toFixed(1)}%` : 'N/A'}
             </div>
           </div>
         )}
@@ -255,11 +257,11 @@ const PredictionChart: React.FC<PredictionChartProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <p className="text-sm text-gray-400">Signal</p>
-              <p className="font-medium" style={{ color: signalColor }}>{prediction.signal_text}</p>
+              <p className="font-medium" style={{ color: signalColor }}>{prediction.signal_text || prediction.action}</p>
             </div>
             <div>
               <p className="text-sm text-gray-400">Confidence</p>
-              <p className="font-medium">{(prediction.confidence * 100).toFixed(1)}%</p>
+              <p className="font-medium">{prediction.confidence ? `${(prediction.confidence * 100).toFixed(1)}%` : 'N/A'}</p>
             </div>
             <div>
               <p className="text-sm text-gray-400">Timestamp</p>

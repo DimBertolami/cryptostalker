@@ -108,7 +108,8 @@ export const fetchHistoricalData = async (params: {
     console.log('Historical data response:', result);
     
     // Extract chart_data from response if it exists
-    const chartData = result?.chart_data?.data;
+    const chartData = result?.chart_data?.data || result?.data || result; //result?.chart_data?.data;
+    console.log('Full historical data response:', JSON.stringify(result, null, 2));
     
     // Ensure we always return an array
     if (!Array.isArray(chartData)) {

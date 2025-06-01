@@ -70,7 +70,7 @@ const PredictionStatus: React.FC<PredictionStatusProps> = ({ isLoading, modelSta
               predictionAction === 'SELL' ? 'bg-red-900 text-red-300' : 
               'bg-yellow-900 text-yellow-300'
             }`}>
-              {predictionAction} {predictionConfidence ? `(${(predictionConfidence * 100).toFixed(0)}%)` : ''}
+              {predictionAction} {predictionConfidence !== null && predictionConfidence !== undefined ? `(${(predictionConfidence * 100).toFixed(0)}%)` : ''}
             </span>
           </div>
         )}
