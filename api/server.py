@@ -18,6 +18,7 @@ from functools import wraps
 from flask import request, jsonify
 import jwt
 import os
+from api.utils.nomics import NomicsAPI
 
 # Load environment variables first
 try:
@@ -657,9 +658,9 @@ def get_ccxt_exchanges():
         return jsonify({"error": f"Failed to get exchanges: {str(e)}"}), 500
 
 # Register Blueprints
-app.register_blueprint(exchange_configurations_bp)
-app.register_blueprint(ccxt_bp)
-app.register_blueprint(prediction_bp)
+app.include_router(nomics.router)
+app.include_router(exchange_configurations_bp)
+app.include_router(prediction_bp)
 
 # --- Price Endpoint ---
 @app.route('/api/price/<string:symbol>', methods=['GET'])
@@ -1217,6 +1218,52 @@ def list_cryptocurrencies():
         return jsonify(cryptos)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# --- Nomics API Endpoints ---
+@app.route('/api/nomics/market-data', methods=['GET'])
+def get_nomics_market_data():
+    """Get current market data for specified coins"""
+    try:
+        coins = request.args.get('coins', 'BTC,ETH,SOL')
+        nomics = NomicsAPI()
+        data = nomics.get_currencies_ticker(ids=coins.split(','))
+        return jsonify(data)
+    except Exception as e:
+        current_app.logger.error(f"Nomics market data error: {str(e)}")
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/api/nomics/historical-prices/<currency>', methods=['GET'])
+def get_nomics_historical_prices(currency):
+    """Get historical prices for a cryptocurrency"""
+    try:
+        days = int(request.args.get('days', 7))
+        interval = request.args.get('interval', '1d')
+        
+        end = datetime.now()
+        start = end - timedelta(days=days)
+        
+        nomics = NomicsAPI()
+        data = nomics.get_historical_prices(
+            currency=currency,
+            start=start,
+            end=end,
+            interval=interval
+        )
+        return jsonify(data)
+    except Exception as e:
+        current_app.logger.error(f"Nomics historical prices error: {str(e)}")
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/api/nomics/exchange-rates', methods=['GET'])
+def get_nomics_exchange_rates():
+    """Get current exchange rates"""
+    try:
+        nomics = NomicsAPI()
+        data = nomics.get_exchange_rates()
+        return jsonify(data)
+    except Exception as e:
+        current_app.logger.error(f"Nomics exchange rates error: {str(e)}")
+        return jsonify({"error": str(e)}), 400
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=False)

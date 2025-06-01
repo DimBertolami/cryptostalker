@@ -32,7 +32,7 @@ fi
 echo -e "${CYAN}${STAR} This script will ensure a clean environment and start both backend and frontend${RESET}"
 
 # Set the correct project directory
-PROJECT_DIR="/home/dim/git/cryptostalker"
+PROJECT_DIR="/home/dim/Documents/cryptostalker"
 cd "$PROJECT_DIR"
 
 # First run the shutdown script to ensure a clean start
@@ -86,7 +86,7 @@ MAX_RETRIES=3
 RETRY_DELAY=3
 for ((i=1; i<=MAX_RETRIES; i++)); do
     echo -e "\n${BOLD}${BLUE}[3/5] Starting Flask backend server... (Attempt $i/$MAX_RETRIES)${RESET}"
-    PYTHONPATH="$PROJECT_DIR" "$API_VENV_DIR/bin/python3" "$PROJECT_DIR/api/server.py" > "$PROJECT_DIR/api-server.log" 2>&1 &
+    PYTHONPATH="$PROJECT_DIR" "$API_VENV_DIR/bin/python3" -c "from api.server import app; app.run(host='0.0.0.0', port=5001, debug=False)" > "$PROJECT_DIR/api-server.log" 2>&1 &
     BACKEND_PID=$!
     echo -e "${CYAN}Backend PID: $BACKEND_PID${RESET}"
     echo -e "${CYAN}backend initializing...${RESET}"
@@ -161,6 +161,12 @@ else
     fi
 fi
 
+# Start resource manager in development mode only
+if [ "$PREVIEW_MODE" = false ]; then
+    echo -e "${CYAN}${STAR} Starting resource manager...${RESET}"
+    nohup bash "$PWD/src/resource_manager.sh" >> "$PWD/logs/resource_manager.log" 2>&1 &
+fi
+
 # Final verification step
 echo -e "\n${BOLD}${BLUE}[6/6]connectivity check${RESET}"
 sleep 2
@@ -175,7 +181,7 @@ fi
 
 # Print success message
 echo -e "\n${BOLD}${GREEN}\ud83c\udf89 CryptoStalker is running! \ud83c\udf89${RESET}"
-echo -e "${BOLD}${CYAN}Backend:${RESET} http://localhost:5001"
+echo -e "${BOLD}${CYAN}Backend:${RESET} http://localhost:5000"
 echo -e "${BOLD}${CYAN}Frontend:${RESET} http://localhost:5173"
 echo "To stop: ./shutdown.sh"
 echo "Log files: cat api-server.log and cat frontend-server.log"

@@ -3,7 +3,8 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
-
+import dotenv
+dotenv.load_dotenv()
 
 # !!! IMPORTANT SECURITY NOTE !!!
 # CHANGE THIS SALT to a unique, secure random byte string and keep it secret and consistent.
@@ -21,9 +22,9 @@ def _derive_key(password: str, salt: bytes) -> bytes:
     key = kdf.derive(password.encode())
     return base64.urlsafe_b64encode(key)
 
-ENCRYPTION_KEY_STR = os.getenv('FLASK_SECRET_ENCRYPTION_KEY')
+ENCRYPTION_KEY_STR = dotenv.get_key('.env', 'FLASK_SECRET_ENCRYPTION_KEY')
 if not ENCRYPTION_KEY_STR:
-    raise ValueError("FLASK_SECRET_ENCRYPTION_KEY environment variable not set. Cannot proceed with encryption.")
+    raise ValueError("FLASK_SECRET_ENCRYPTION_KEY not set in .env file.")
 
 # Derive the Fernet key
 FERNET_KEY = _derive_key(ENCRYPTION_KEY_STR, SALT)
